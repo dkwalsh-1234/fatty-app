@@ -2,20 +2,20 @@
 import { describe, expect, it } from 'vitest';
 import { ringGeometry, splitEnergy } from '@/design/components/ring';
 import { targetState } from '@/design/components/TargetBar';
-import { buildChips, cleanTyped, mealPer100, measureChipLabel, parseTyped } from '@/lib/amount';
+import { buildChips, cleanTyped, convertAmount, mealPer100, measureChipLabel, naturalStart, parseTyped, unitOptions } from '@/lib/amount';
 import { barcodeVariants, hasValidCheckDigit, normalizeBarcode, upcEToUpcA } from '@/lib/barcode';
 import { addDays, ageOn, dayBounds, localDate, mealForTime, zonedToUtc } from '@/lib/dates';
 import { evaluateGoal, goalLine, todaysTargetLine } from '@/components/forms/GoalForm';
 import { captionParts } from '@/lib/caption';
 import { buildDay, pickBurn, targetFor } from '@/lib/day';
-import { saltText } from '@/lib/format';
+import { amountText, saltText } from '@/lib/format';
 import { emptyPer100, scale, sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { parseSearch, parseText } from '@/lib/parse';
 import { cleanEstimate, cleanResolve, componentsForGrams, isWeakMatch } from '@/lib/resolution';
 import { mapOffProduct } from '@/lib/sources/off';
 import { mapOffAuRow } from '@/lib/sources/off-au';
 import { checkGoal, computeTarget, restingKcal, roundTarget, targetsConflict } from '@/lib/target';
-import type { BurnRow, Food, Goal, LogEntry, Profile } from '@/lib/types';
+import type { BurnRow, Food, FoodStats, Goal, LogEntry, Profile } from '@/lib/types';
 import { widgetSummary } from '@/lib/widget';
 
 const p100 = (o: Partial<Per100>): Per100 => ({ ...emptyPer100(), ...o });
@@ -371,22 +371,27 @@ describe('typed amounts', () => {
 });
 
 describe('amount sheet chips', () => {
-  const food = { source: 'off' as const, serving_g: 45, pack_g: 750, total_weight_g: null, serves: null };
+  const base = { name: 'Muesli', display_name: null, is_liquid: false, density_g_per_ml: null, total_weight_g: null, serves: null };
+  const food = { ...base, source: 'off' as const, serving_g: 45, pack_g: 750 };
   const m = (id: string, label: string, grams: number, rank: number, owner: string | null = null) => ({ id, food_id: 'f', label, grams, source: 'ausnut' as const, owner_id: owner, rank });
+  const stat = (o: Partial<FoodStats>): FoodStats => ({ food_id: 'f', use_count: 3, last_used_at: null, last_grams: null, last_unit: null, last_amount: null, last_measure: null, ...o });
 
-  it('orders last amount, serve, pack, then measures; at most five; no repeats', () => {
-    const chips = buildChips(food, [m('a', '1 cup', 30, 0), m('b', '1 tbsp', 45, 1), m('c', '1 bowl', 60, 2), m('d', '1 handful', 20, 3), m('e', 'mine', 320, 0, 'u')], {
-      food_id: 'f', use_count: 3, last_used_at: null, last_grams: 45, last_unit: 'g', last_amount: 45,
-    });
-    expect(chips.map((c) => c.label)).toEqual(['Last · 45 g', 'Whole pack · 750 g', 'mine · 320 g', '1 cup · 30 g', '1 bowl · 60 g']);
+  it('orders last amount, measures, serve, then pack; at most five; no repeats', () => {
+    const ms = [m('a', '1 cup', 30, 0), m('b', '1 tbsp', 45, 1), m('c', '1 bowl', 60, 2), m('d', '1 handful', 20, 3), m('e', '1 mine', 320, 0, 'u')];
+    const chips = buildChips(food, unitOptions(food, ms), stat({ last_grams: 45, last_unit: 'g', last_amount: 45 }));
+    expect(chips.map((c) => c.label)).toEqual(['Last · 45 g', '1 mine · 320 g', '1 cup · 30 g', '1 bowl · 60 g', '1 handful · 20 g']);
   });
 
   it('adds another measure on a second tap', () => {
-    expect(measureChipLabel({ key: 'm', label: '1 cup · 40 g', grams: 40, kind: 'measure' }, 2)).toBe('2 × 1 cup · 80 g');
+    const unit = { kind: 'measure' as const, label: 'cup', grams: 40, hint: '40 g', estimate: false, countable: false };
+    expect(measureChipLabel({ key: 'm', label: '1 cup · 40 g', unit, amount: 1, kind: 'measure' }, 2)).toBe('2 × 1 cup · 80 g');
+    const cup = { kind: 'measure' as const, label: 'regular cup', grams: 285.6, hint: '280 ml', estimate: true, countable: true };
+    expect(measureChipLabel({ key: 'c', label: '1 regular cup · 280 ml', unit: cup, amount: 1, kind: 'measure' }, 2)).toBe('2 × 1 regular cup · 560 ml');
   });
 
   it('offers one serve, half and whole for a meal', () => {
-    const chips = buildChips({ source: 'meal', serving_g: null, pack_g: null, total_weight_g: 1200, serves: 4 }, [], null);
+    const meal = { ...base, source: 'meal' as const, serving_g: null, pack_g: null, total_weight_g: 1200, serves: 4 };
+    const chips = buildChips(meal, unitOptions(meal, []), null);
     expect(chips.map((c) => c.label)).toEqual(['1 serve · 300 g', 'Half · 600 g', 'Whole · 1,200 g']);
   });
 
@@ -405,6 +410,71 @@ describe('amount sheet chips', () => {
     expect(quarter.energy_kj).toBeCloseTo((1500 * 5 + 900 * 5) / 4, 9);
     // Dropping an ingredient scales the cooked weight with the raw weight left.
     expect(mealPer100([{ per100: a, grams: 500 }], { cookedWeight: 1200, originalRawSum: 1000 }).totalWeight).toBe(600);
+  });
+});
+
+describe('units people think in (testing on 20 Oct)', () => {
+  // "Coffee, flat white/cappuccino/latte, single shot & cereal based milk (rice/oat)" as FSANZ has it:
+  // a density, marked solid, no household measures, no serve size.
+  const flatWhite = {
+    name: 'Coffee, flat white/cappuccino/latte, single shot & cereal based milk (rice/oat)', display_name: null, source: 'ausnut' as const,
+    is_liquid: false, density_g_per_ml: 1.02, serving_g: null, pack_g: null, total_weight_g: null, serves: null,
+  };
+  const m = (label: string, grams: number, rank = 0) => ({ id: label, food_id: 'f', label, grams, source: 'ausnut' as const, owner_id: null, rank });
+
+  it('gives a coffee ml, café cup sizes and kitchen measures, and opens on a regular cup', () => {
+    const units = unitOptions(flatWhite, []);
+    expect(units.map((u) => u.label)).toEqual(['g', 'ml', 'small cup', 'regular cup', 'large cup', 'cup', 'tbsp', 'tsp']);
+    const regular = units.find((u) => u.label === 'regular cup')!;
+    expect(regular.grams).toBeCloseTo(280 * 1.02, 6);
+    expect(regular.estimate).toBe(true);
+    const start = naturalStart(flatWhite, units, null);
+    expect([start.unit.label, start.amount]).toEqual(['regular cup', 1]);
+    expect(buildChips(flatWhite, units, null).map((c) => c.label)).toEqual(['1 small cup · 220 ml', '1 regular cup · 280 ml', '1 large cup · 350 ml']);
+  });
+
+  it('keeps FSANZ cup sizes where it has them (espresso), and gives powders no café cups', () => {
+    const espresso = { ...flatWhite, name: 'Coffee, espresso' };
+    expect(unitOptions(espresso, [m('1 espresso cup, single shot (50 mL)', 50)]).map((u) => u.label)).toEqual(['g', 'ml', 'espresso cup, single shot (50 mL)', 'cup', 'tbsp', 'tsp']);
+    const powder = { ...flatWhite, name: 'Coffee mix powder, with beverage whitener' };
+    expect(unitOptions(powder, []).some((u) => u.label.endsWith(' cup'))).toBe(false);
+  });
+
+  it('opens a countable food on one medium, and bread with no slice measure on one slice', () => {
+    const apple = { ...flatWhite, name: 'Apple, red skin, unpeeled, raw', density_g_per_ml: null };
+    const units = unitOptions(apple, [m('1 small', 120, 0), m('1 medium', 170, 1), m('1 cup, chopped', 120, 2)]);
+    expect(naturalStart(apple, units, null).unit.label).toBe('medium');
+    const bread = { ...apple, name: 'Bread, white, commercial' };
+    const b = naturalStart(bread, unitOptions(bread, []), null);
+    expect([b.unit.label, b.unit.grams, b.amount]).toEqual(['slice', 35, 1]);
+  });
+
+  it('opens drinks without a size in ml, a packaged product on one serve, else grams', () => {
+    const juice = { ...flatWhite, name: 'Juice, orange, commercial', is_liquid: true, density_g_per_ml: 1.04 };
+    const units = unitOptions(juice, []);
+    expect(units.map((u) => u.label)).toContain('glass');
+    expect(naturalStart(juice, units, null).unit.label).toBe('glass');
+    const cereal = { ...flatWhite, name: 'Weet-Bix', source: 'off' as const, density_g_per_ml: null, serving_g: 30, pack_g: 575 };
+    expect(naturalStart(cereal, unitOptions(cereal, []), null).unit.label).toBe('serve');
+    const rice = { ...flatWhite, name: 'Rice, white, boiled', density_g_per_ml: null };
+    expect(naturalStart(rice, unitOptions(rice, []), null)).toMatchObject({ unit: { kind: 'g' }, amount: null });
+  });
+
+  it('reopens on your last amount in its measure', () => {
+    const units = unitOptions(flatWhite, []);
+    const stats = { food_id: 'f', use_count: 2, last_used_at: null, last_grams: 357, last_unit: 'measure' as const, last_amount: 1, last_measure: 'large cup' };
+    expect(naturalStart(flatWhite, units, stats)).toMatchObject({ unit: { label: 'large cup' }, amount: 1, fromLast: true });
+    expect(buildChips(flatWhite, units, stats)[0].label).toBe('Last · 1 large cup');
+  });
+
+  it('converts a prefilled amount when the unit changes, and writes amounts the way people say them', () => {
+    const units = unitOptions(flatWhite, []);
+    const regular = units.find((u) => u.label === 'regular cup')!;
+    expect(convertAmount(237, units[0], regular)).toBe(0.8);
+    expect(convertAmount(1, regular, units[0])).toBe(286);
+    expect(amountText(1, 'measure', 'regular cup')).toBe('1 regular cup');
+    expect(amountText(2, 'measure', 'slice')).toBe('2 × slice');
+    expect(amountText(250, 'ml')).toBe('250 ml');
   });
 });
 
@@ -438,7 +508,7 @@ describe('Today and the widget', () => {
   };
   const entry = (name: string, grams: number, per: Partial<Per100>, meal: LogEntry['meal'] = 'lunch'): LogEntry => ({
     id: name, owner_id: 'u', eaten_at: '2026-10-19T02:00:00Z', meal, food_id: null, food_name_snapshot: name, source_snapshot: null, grams, entered_amount: grams,
-    entered_unit: 'g', per100_snapshot: p100(per), ingredient_adjustments: null, is_estimate: false, method: 'search', meal_photo_id: null, hc_synced_at: null,
+    entered_unit: 'g', entered_measure: null, per100_snapshot: p100(per), ingredient_adjustments: null, is_estimate: false, method: 'search', meal_photo_id: null, hc_synced_at: null,
     created_at: '', updated_at: '',
   });
 

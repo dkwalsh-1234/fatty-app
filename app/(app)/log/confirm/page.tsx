@@ -19,7 +19,7 @@ import { aiEstimate, AiCallError } from '@/lib/ai-fallback';
 import { getFood, saveMeal, type SearchResult } from '@/lib/data';
 import { useFoodSearch } from '@/lib/useFoodSearch';
 import type { Candidate, Draft } from '@/lib/drafts';
-import { energyText, grams as fmtGrams, int, saltText } from '@/lib/format';
+import { amountText, energyText, grams as fmtGrams, int, saltText } from '@/lib/format';
 import { saveEntries } from '@/lib/logging';
 import { sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { supabase } from '@/lib/supabase/browser';
@@ -48,6 +48,8 @@ interface Row {
   note: string | null;
   /** The AI split a mixed drink or dish into parts: what it was split from. */
   splitFrom: string | null;
+  /** How you entered the amount on the amount sheet, when not in grams ("1 regular cup"). */
+  entered: { amount: number; unit: 'g' | 'ml' | 'measure'; measure: string | null } | null;
 }
 
 const fromCandidate = (c: Candidate): NonNullable<Row['food']> => ({
@@ -105,6 +107,7 @@ function Confirm() {
           on: !i.suggested,
           note: i.note,
           splitFrom: i.splitFrom ?? null,
+          entered: null,
         })),
       );
     })().catch((e: Error) => setError(e.message));
@@ -139,7 +142,8 @@ function Confirm() {
       food,
       initialGrams: r.grams,
       saveLabel: 'Done',
-      onPick: ({ grams }) => update(r.key, { grams, estimate: false, note: null, on: true }),
+      onPick: ({ grams, amount, unit, measure, estimate }) =>
+        update(r.key, { grams, estimate, note: null, on: true, entered: unit === 'g' ? null : { amount, unit, measure } }),
     });
   }
 
@@ -158,8 +162,9 @@ function Confirm() {
           food_name_snapshot: r.food!.name,
           source_snapshot: SOURCE_TAG[r.food!.source as keyof typeof SOURCE_TAG] ?? null,
           grams: r.grams!,
-          entered_amount: r.grams!,
-          entered_unit: 'g' as const,
+          entered_amount: r.entered?.amount ?? r.grams!,
+          entered_unit: r.entered?.unit ?? ('g' as const),
+          entered_measure: r.entered?.unit === 'measure' ? r.entered.measure : null,
           per100_snapshot: r.food!.per100,
           is_estimate: r.estimate,
           method: draft?.kind === 'photo' ? ('photo' as const) : ('text' as const),
@@ -258,10 +263,10 @@ function Confirm() {
                 <button
                   type="button"
                   onClick={() => editGrams(r)}
-                  aria-label={`${r.food!.name}, ${r.grams ?? 'no'} g. Change amount`}
+                  aria-label={`${r.food!.name}, ${r.grams ? `${int(r.grams)} g` : 'no amount'}. Change amount`}
                   className="press h-[34px] shrink-0 rounded-[17px] border-0 bg-raised px-3.5 text-[15px] font-medium tnum"
                 >
-                  {r.grams ? `${r.estimate ? '≈ ' : ''}${int(r.grams)} g` : 'Add g'}
+                  {r.grams ? (r.entered ? amountText(r.entered.amount, r.entered.unit, r.entered.measure) : `${r.estimate ? '≈ ' : ''}${int(r.grams)} g`) : 'Add amount'}
                 </button>
                 <button type="button" onClick={() => setSwapping(r)} aria-label={`Swap ${r.food!.name}`} className="flex h-11 w-10 items-center justify-center border-0 bg-transparent p-0 text-accent">
                   <Icon name="swap" size={20} stroke={1.9} />
@@ -316,7 +321,7 @@ function Confirm() {
               className="h-[22px] w-[22px] shrink-0 accent-[var(--cc-accent)]"
             />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[15px] font-medium tnum">
+              <span className="line-clamp-2 text-[15px] font-medium leading-snug tnum">
                 {r.food?.name ?? r.label}
                 {r.note ? ` · ${r.note}` : ''} · {r.grams ? `${int(r.grams)} g` : '?'}
               </span>
@@ -472,7 +477,7 @@ function SwapSheet({ row, estimateWith, onClose, onPick }: {
             {row.candidates.map((c) => (
               <button key={c.id} type="button" onClick={() => onPick(fromCandidate(c))} className="flex min-h-12 w-full items-center justify-between gap-3 border-0 border-t border-separator bg-transparent py-2 text-left first:border-t-0">
                 <span className="min-w-0">
-                  <span className="block truncate text-[15px]">{c.display_name ?? c.name}</span>
+                  <span className="line-clamp-2 text-[15px] leading-snug">{c.display_name ?? c.name}</span>
                   <span className="block text-[12px] text-ink2">{SOURCE_TAG[c.source as keyof typeof SOURCE_TAG]}</span>
                 </span>
                 {row.food?.id === c.id && <Icon name="check" size={18} className="text-accent" />}
@@ -490,7 +495,7 @@ function SwapSheet({ row, estimateWith, onClose, onPick }: {
           <div className="max-h-[40dvh] overflow-y-auto rounded-card bg-raised px-4 py-1">
             {results.map((r) => (
               <button key={r.id} type="button" onClick={() => pickResult(r)} className="flex min-h-12 w-full flex-col justify-center border-0 border-t border-separator bg-transparent py-2 text-left first:border-t-0">
-                <span className="truncate text-[15px]">{r.display_name ?? r.name}</span>
+                <span className="line-clamp-2 text-[15px] leading-snug">{r.display_name ?? r.name}</span>
                 <span className="text-[12px] text-ink2">{[r.brand, SOURCE_TAG[r.source]].filter(Boolean).join(' · ')}</span>
               </button>
             ))}

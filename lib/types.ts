@@ -97,8 +97,10 @@ export interface FoodStats {
   use_count: number;
   last_used_at: string | null;
   last_grams: number | null;
-  last_unit: 'g' | 'ml' | null;
+  last_unit: 'g' | 'ml' | 'measure' | null;
   last_amount: number | null;
+  /** The measure's name when last_unit is 'measure': "regular cup", "slice". */
+  last_measure?: string | null;
 }
 
 export type LogMethod = 'search' | 'barcode' | 'label' | 'photo' | 'text' | 'meal' | 'repeat';
@@ -119,7 +121,9 @@ export interface LogEntry {
   source_snapshot: string | null;
   grams: number;
   entered_amount: number;
-  entered_unit: 'g' | 'ml';
+  entered_unit: 'g' | 'ml' | 'measure';
+  /** The measure's name when entered_unit is 'measure': "regular cup", "slice", "tbsp". */
+  entered_measure: string | null;
   per100_snapshot: Per100;
   ingredient_adjustments: IngredientAdjustment | null;
   is_estimate: boolean;

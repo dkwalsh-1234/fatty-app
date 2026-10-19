@@ -43,6 +43,7 @@ function entry(date: string, time: string, meal: LogEntry['meal'], name: string,
     grams,
     entered_amount: grams,
     entered_unit: 'g',
+    entered_measure: null,
     per100_snapshot: per100,
     ingredient_adjustments: null,
     is_estimate: false,
@@ -152,6 +153,12 @@ export function devFixtures(today: string): Fixtures {
         food: food('salad', 'Mixed salad leaves', 'ausnut', salad),
         measures: [measure('m-cup', 'salad', '1 cup', 30)],
         stats: { food_id: 'salad', use_count: 4, last_used_at: '2026-10-18T02:00:00Z', last_grams: 45, last_unit: 'g', last_amount: 45 },
+      },
+      // As FSANZ has it: a density, marked solid, no household measures, no serve size.
+      coffee: {
+        food: food('coffee', 'Coffee, flat white/cappuccino/latte, single shot & cereal based milk (rice/oat)', 'ausnut', flatWhite, { is_liquid: false, density_g_per_ml: 1.02 }),
+        measures: [],
+        stats: null,
       },
       milk: {
         food: food('milk', 'Milk, full cream', 'ausnut', milk, { is_liquid: true, density_g_per_ml: 1.03, serving_g: 250 }),

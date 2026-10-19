@@ -1,20 +1,36 @@
 'use client';
 
 // The amount sheet: every flow that lands on a single food or meal opens it.
-// Choosing a food opens an amount field already in grams with the keypad up; typing 45 and
-// tapping Save is the whole job. Chips fill grams; nothing ever needs a unit change.
+// Choosing a food opens the amount field with the keypad up, in the food's natural unit: your last
+// amount, a regular café cup, one slice or one medium, ml for drinks, else grams. Typing a number
+// and tapping Save is the whole job. The unit beside the number switches to any unit the food has
+// (g, ml, cup, tbsp, tsp, its household measures, typical sizes, serve, pack); grams stay the truth.
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { targetState } from '@/design/components/TargetBar';
-import { amountString, buildChips, cleanTyped, density, mealPer100, measureChipLabel, parseTyped, toGrams, type AmountChip } from '@/lib/amount';
+import {
+  amountString,
+  buildChips,
+  cleanTyped,
+  convertAmount,
+  GRAMS,
+  mealPer100,
+  measureChipLabel,
+  naturalStart,
+  parseTyped,
+  unitGrams,
+  unitOptions,
+  type AmountChip,
+  type AmountUnit,
+} from '@/lib/amount';
 import { DEFAULT_MEAL_BOUNDARIES, localDate, localTime, MEAL_LABEL, MEAL_ORDER, mealForTime, zonedToUtc, type Meal } from '@/lib/dates';
 import { getFood, getMeasures, getStats, mealIngredients, saveMeal } from '@/lib/data';
 import { energyIn, energyText, int, nutrientText, saltText } from '@/lib/format';
 import { removeEntries, saveEntries, saveEntryEdit } from '@/lib/logging';
 import { NUTRIENTS, scale, type Per100 } from '@/lib/nutrients';
 import type { FoodSource } from '@/lib/sources/types';
-import { SOURCE_TAG, type Food, type FoodStats, type IngredientAdjustment, type LogEntry, type LogMethod, type Measure, type MealIngredient } from '@/lib/types';
+import { SOURCE_TAG, type Food, type FoodStats, type IngredientAdjustment, type LogEntry, type LogMethod, type MealIngredient } from '@/lib/types';
 import { Button, Chip, cx, Field, Icon, Notice, RoundButton, Sheet } from '../ui';
 import { useApp, useDay } from './AppProvider';
 
@@ -44,10 +60,20 @@ export type AmountRequest =
       food?: Food;
       initialGrams?: number | null;
       saveLabel?: string;
-      onPick: (r: { grams: number; amount: number; unit: 'g' | 'ml'; food: Food }) => void;
+      onPick: (r: { grams: number; amount: number; unit: AmountUnit['kind']; measure: string | null; estimate: boolean; food: Food }) => void;
     };
 
 const TILE_ORDER = NUTRIENTS;
+
+/** The unit an entry was logged in, with the grams per unit it was logged with. */
+function entryUnit(e: LogEntry): AmountUnit {
+  const per = e.entered_amount > 0 ? e.grams / e.entered_amount : 1;
+  if (e.entered_unit === 'measure') return { kind: 'measure', label: e.entered_measure ?? 'serve', grams: per, hint: null, estimate: e.is_estimate, countable: true };
+  if (e.entered_unit === 'ml') return { kind: 'ml', label: 'ml', grams: per, hint: null, estimate: e.is_estimate, countable: false };
+  return GRAMS;
+}
+
+const sameUnit = (a: AmountUnit, b: AmountUnit) => a.kind === b.kind && a.label === b.label;
 
 export function AmountSheet({ request, onClose }: { request: AmountRequest; onClose: () => void }) {
   const cancel = () => {
@@ -64,7 +90,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
   const foodId = request.kind === 'edit' ? request.entry.food_id : request.foodId;
 
   const [food, setFood] = useState<Food | null>(request.kind !== 'edit' ? (request.food ?? null) : null);
-  const [measures, setMeasures] = useState<Measure[]>([]);
+  const [units, setUnits] = useState<AmountUnit[]>(() => (edit ? [GRAMS, entryUnit(edit)].filter((u, i, a) => a.findIndex((x) => sameUnit(x, u)) === i) : [GRAMS]));
   const [stats, setStats] = useState<FoodStats | null>(null);
   const [ingredients, setIngredients] = useState<MealIngredient[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -78,10 +104,18 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
   }));
   const [editingWhen, setEditingWhen] = useState(false);
 
-  // The amount field.
-  const [unit, setUnit] = useState<'g' | 'ml'>(() =>
-    edit ? edit.entered_unit : request.kind === 'food' && request.prefill?.unit ? request.prefill.unit : 'g',
+  // The amount field. Its unit settles once the food loads (naturalStart).
+  const [unit, setUnit] = useState<AmountUnit>(() =>
+    edit
+      ? entryUnit(edit)
+      : request.kind === 'food' && request.prefill?.unit === 'ml'
+        ? { kind: 'ml', label: 'ml', grams: 1, hint: null, estimate: true, countable: false }
+        : GRAMS,
   );
+  // Whether you typed the number. Switching unit keeps a number you typed (you meant it in the other
+  // unit) and converts one you didn't (a prefill or a chip).
+  const [touched, setTouched] = useState(() => request.kind === 'food' && !!request.prefill?.amount);
+  const [picking, setPicking] = useState(false);
   const [typed, setTyped] = useState(() => {
     if (edit) return amountString(edit.entered_amount);
     if (request.kind === 'pick' && request.initialGrams) return amountString(request.initialGrams);
@@ -115,26 +149,24 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
       .then(async ([f, m, s]) => {
         if (!live) return;
         setFood(f);
-        setMeasures(m);
         setStats(s);
+        const options = unitOptions(f, m);
+        if (edit) {
+          // Keep the unit and grams-per-unit the entry was logged with.
+          const own = entryUnit(edit);
+          setUnits([...options.filter((u) => !sameUnit(u, own)), own].sort((a, b) => options.findIndex((u) => sameUnit(u, a)) - options.findIndex((u) => sameUnit(u, b))));
+        } else {
+          setUnits(options);
+        }
         if (f.source === 'meal') setIngredients(fx?.ingredients ?? (await mealIngredients(f.id)));
-        // Prefill with your last amount, fully selected, so typing replaces it.
-        if (!edit && request.kind === 'food') {
-          const pre = request.prefill;
-          if (pre?.count && !pre.amount) {
-            const first = [...m].sort((a, b) => a.rank - b.rank)[0];
-            if (first) {
-              setTyped(amountString(first.grams * pre.count));
-              setChipCounts({ [`m:${first.id}`]: pre.count });
-              setActiveChip(`m:${first.id}`);
-            }
-          } else if (!pre?.amount && s?.last_grams) {
-            const lastUnit = s.last_unit ?? 'g';
-            setUnit(lastUnit);
-            setTyped(amountString(lastUnit === 'ml' && s.last_amount ? s.last_amount : s.last_grams));
-            setActiveChip('last');
-            setPrefilled(true);
-          }
+        // Start in the food's natural unit; a prefilled amount is fully selected, so typing replaces it.
+        if (!edit && (request.kind === 'food' || (request.kind === 'pick' && !request.initialGrams))) {
+          const start = naturalStart(f, options, s, request.kind === 'food' ? request.prefill : undefined);
+          setUnit(start.unit);
+          if (start.amount != null) setTyped(amountString(start.amount));
+          if (start.fromLast) setActiveChip('last');
+          else if (start.unit.kind === 'measure' && start.amount === 1) setActiveChip(`u:${start.unit.label}`);
+          setPrefilled(start.amount != null && !(request.kind === 'food' && request.prefill?.amount));
         }
       })
       .catch((e: Error) => live && setLoadError(e.message));
@@ -155,17 +187,10 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
 
   const name = edit?.food_name_snapshot ?? food?.display_name ?? food?.name ?? (request.kind !== 'edit' ? request.preview?.name : '') ?? '';
   const source: FoodSource | null = food?.source ?? (request.kind !== 'edit' ? (request.preview?.source ?? null) : null);
-  const isLiquid = edit ? edit.entered_unit === 'ml' || !!food?.is_liquid : (food?.is_liquid ?? (request.kind !== 'edit' && !!request.preview?.is_liquid));
   const isMeal = source === 'meal';
 
-  // ml → g. For an edit with ml, keep the density the entry was logged with.
-  const dens = useMemo(() => {
-    if (edit && edit.entered_unit === 'ml' && edit.entered_amount > 0) return { gPerMl: edit.grams / edit.entered_amount, assumed: edit.is_estimate };
-    return food ? density(food) : { gPerMl: 1, assumed: true };
-  }, [edit, food]);
-
   const amount = parseTyped(typed);
-  const gramsNow = amount == null ? null : toGrams(amount, unit, dens.gPerMl);
+  const gramsNow = amount == null ? null : unitGrams(amount, unit);
 
   // Per-100 g values this entry snapshots. Editing recalculates from the snapshot, never the food.
   const per100: Per100 | null = useMemo(() => {
@@ -179,7 +204,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
     return food;
   }, [adjusted, ingredients, edit, food]);
 
-  const chips = useMemo(() => (food ? buildChips(food, measures, stats) : []), [food, measures, stats]);
+  const chips = useMemo(() => (food ? buildChips(food, units, stats) : []), [food, units, stats]);
   const preview = per100 && gramsNow != null ? scale(per100, gramsNow) : null;
 
   // Today's totals without this entry, for the bars on each tile.
@@ -197,8 +222,10 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
     const n = chip.kind === 'measure' && activeChip === chip.key ? (chipCounts[chip.key] ?? 1) + 1 : 1;
     setChipCounts({ [chip.key]: n });
     setActiveChip(chip.key);
-    const grams = chip.grams * n;
-    setTyped(amountString(unit === 'ml' ? grams / dens.gPerMl : grams));
+    setUnit(chip.unit);
+    setTyped(amountString(chip.kind === 'measure' ? n : chip.amount));
+    setTouched(false);
+    setPrefilled(false);
     inputRef.current?.focus();
   }
 
@@ -207,12 +234,19 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
     setActiveChip(null);
     setChipCounts({});
     setPrefilled(false);
+    setTouched(true);
   }
 
-  // Switching unit keeps the number: you switch because what you typed was meant in the other unit.
-  function toggleUnit() {
-    setUnit(unit === 'g' ? 'ml' : 'g');
-    setActiveChip(null);
+  // A number you typed is kept (you meant it in the new unit); a prefilled one is converted.
+  function pickUnit(u: AmountUnit) {
+    setPicking(false);
+    if (!sameUnit(u, unit)) {
+      if (amount != null && !touched) setTyped(amountString(convertAmount(amount, unit, u)));
+      else if (amount == null && u.countable) setTyped('1');
+      setUnit(u);
+      setActiveChip(null);
+      setChipCounts({});
+    }
     inputRef.current?.focus();
   }
 
@@ -234,25 +268,25 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
     try {
       if (request.kind === 'pick') {
         if (!food) throw new Error('Still loading that food.');
-        request.onPick({ grams: gramsNow, amount: amount!, unit, food });
+        request.onPick({ grams: gramsNow, amount: amount!, unit: unit.kind, measure: unit.kind === 'measure' ? unit.label : null, estimate: unit.estimate, food });
         onClose();
         return;
       }
       if (!per100) throw new Error('Still loading that food.');
       const eatenAt = zonedToUtc(when.date, when.time, tz).toISOString();
-      const estimate = (unit === 'ml' && dens.assumed) || (request.kind === 'food' && !!request.isEstimate) || (!!edit?.is_estimate && unit === 'ml');
+      const estimate = unit.estimate || (request.kind === 'food' && !!request.isEstimate);
+      const entered = { entered_amount: amount!, entered_unit: unit.kind, entered_measure: unit.kind === 'measure' ? unit.label : null };
       if (edit) {
         await saveEntryEdit(
           edit.id,
           {
             grams: gramsNow,
-            entered_amount: amount!,
-            entered_unit: unit,
+            ...entered,
             meal: when.meal,
             eaten_at: eatenAt,
             per100_snapshot: per100,
             ingredient_adjustments: adjusted,
-            is_estimate: estimate || edit.is_estimate,
+            is_estimate: unit.kind === 'g' ? false : estimate,
           },
           tz,
         );
@@ -269,8 +303,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
             food_name_snapshot: name,
             source_snapshot: SOURCE_TAG[food!.source],
             grams: gramsNow,
-            entered_amount: amount!,
-            entered_unit: unit,
+            ...entered,
             per100_snapshot: per100,
             ingredient_adjustments: adjusted,
             is_estimate: estimate,
@@ -333,13 +366,13 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
                     cancel();
                     router.push(`/foods/${food.id}`);
                   }}
-                  className="max-w-full truncate border-0 bg-transparent p-0 text-[18px] font-semibold text-ink"
+                  className="max-w-full border-0 bg-transparent p-0 text-[18px] font-semibold text-ink"
                   aria-label={`${name}: details, measures and edit`}
                 >
-                  {name}
+                  <span className="line-clamp-2 leading-tight">{name}</span>
                 </button>
               ) : (
-                <span className="max-w-full truncate text-[18px] font-semibold">{name || '…'}</span>
+                <span className="line-clamp-2 max-w-full text-[18px] font-semibold leading-tight">{name || '…'}</span>
               )}
               <span className="text-xs text-ink2">
                 {source ? (edit?.source_snapshot ?? SOURCE_TAG[source]) : (edit?.source_snapshot ?? '')}
@@ -363,7 +396,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
 
           <div className="flex flex-col items-center gap-0.5 pb-0.5 pt-1.5">
             <label htmlFor="amount-field" className="sr-only">
-              Amount in {unit === 'g' ? 'grams' : 'millilitres'}
+              Amount in {unit.kind === 'g' ? 'grams' : unit.kind === 'ml' ? 'millilitres' : unit.label}
             </label>
             <div
               className="flex h-[104px] min-w-[220px] max-w-full items-center justify-center rounded-[52px] bg-raised px-7"
@@ -384,15 +417,22 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
                 className="border-0 bg-transparent p-0 text-right font-light leading-none tracking-[-0.05em] text-ink outline-none tnum placeholder:text-ink3"
                 style={{ width, fontSize: figureSize, caretColor: 'var(--cc-focus)' }}
               />
-              {isLiquid ? (
+              {units.length > 1 ? (
                 <button
                   type="button"
-                  onClick={toggleUnit}
-                  aria-label={`Unit: ${unit}. Switch to ${unit === 'g' ? 'millilitres' : 'grams'}`}
-                  className="ml-2.5 flex items-center gap-1 rounded-full border-0 bg-surface/60 px-2.5 py-1 text-[30px] text-ink2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPicking((v) => !v);
+                  }}
+                  aria-expanded={picking}
+                  aria-label={`Unit: ${unit.label}. Change unit`}
+                  className={cx(
+                    'ml-2.5 flex min-w-0 max-w-[160px] items-center gap-1 rounded-full border-0 bg-surface/60 px-2.5 py-1 text-ink2',
+                    unit.label.length <= 3 ? 'text-[30px]' : 'text-[20px] leading-tight',
+                  )}
                 >
-                  {unit}
-                  <Icon name="swap" size={16} />
+                  <span className="truncate">{unit.label}</span>
+                  <Icon name="chevronDown" size={14} stroke={2.2} />
                 </button>
               ) : (
                 <span className="pl-2.5 text-[30px] text-ink2">g</span>
@@ -400,11 +440,23 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
             </div>
             <span className="pt-2 text-sm text-ink2 tnum">
               {energyNow == null ? (per100 && per100.energy_kj == null ? 'Energy unknown' : ' ') : energyText(energyNow, unitPref)}
-              {unit === 'ml' && gramsNow != null && ` · ${int(gramsNow)} g${dens.assumed ? ', assumed 1 g per ml' : ''}`}
+              {unit.kind !== 'g' && gramsNow != null && ` · ${int(gramsNow)} g`}
+              {unit.kind !== 'g' && unit.estimate && (unit.countable ? ', typical size' : ', assumed 1 g per ml')}
             </span>
           </div>
 
-          {chips.length > 0 && (
+          {picking && (
+            <div role="group" aria-label="Units" className="flex flex-wrap justify-center gap-2">
+              {units.map((u) => (
+                <Chip key={`${u.kind}:${u.label}`} selected={sameUnit(u, unit)} onClick={() => pickUnit(u)}>
+                  {u.label}
+                  {u.hint && <span className="font-normal opacity-70"> · {u.hint}</span>}
+                </Chip>
+              ))}
+            </div>
+          )}
+
+          {!picking && chips.length > 0 && (
             <div className="flex flex-wrap justify-center gap-2">
               {chips.map((c) => (
                 <Chip key={c.key} selected={activeChip === c.key} onClick={() => choose(c)}>
@@ -422,7 +474,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
             </div>
           )}
 
-          <div aria-label={`Nutrition for ${typed || 0} ${unit}`} className="grid grid-cols-3 gap-1.5">
+          <div aria-label={`Nutrition for ${typed || 0} ${unit.label}`} className="grid grid-cols-3 gap-1.5">
             {TILE_ORDER.map((info) => {
               const v = preview ? preview[info.key] : null;
               const row = info.key === 'energy_kj' ? null : day?.targetRows.find((r) => r.info.key === info.key);
@@ -592,7 +644,7 @@ function AdjustIngredients({ ingredients, value, onDone, onCancel, mealName }: {
       <div className="rounded-card bg-raised px-4 py-1">
         {rows.map((r, i) => (
           <div key={r.food_id} className={cx('flex min-h-[52px] items-center gap-2 border-t border-separator first:border-t-0', !r.on && 'opacity-50')}>
-            <span className={cx('min-w-0 flex-1 truncate text-[15px]', !r.on && 'line-through')}>{r.name}</span>
+            <span className={cx('line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug', !r.on && 'line-through')}>{r.name}</span>
             <input
               type="text"
               inputMode="decimal"

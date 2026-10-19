@@ -340,10 +340,10 @@ function LogGroup({ group, unit, missingKeys, onEntry, onMenu }: {
               key={e.id}
               type="button"
               onClick={() => onEntry(e)}
-              className="flex h-[46px] w-full items-center gap-2.5 border-0 border-t border-separator bg-transparent p-0 pr-3.5 text-left"
+              className="flex min-h-[46px] w-full items-center gap-2.5 border-0 border-t border-separator bg-transparent p-0 py-1.5 pr-3.5 text-left"
             >
-              <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[15px] text-ink">
-                <span className="truncate">{e.food_name_snapshot}</span>
+              <span className="flex min-w-0 flex-1 items-center gap-2 text-[15px] text-ink">
+                <span className="line-clamp-2 min-w-0 leading-snug">{e.food_name_snapshot}</span>
                 {isAiEstimate(e) && <DashedChip title="Values are an AI estimate, not from a food database">AI est.</DashedChip>}
                 {gaps.map((k) => (
                   <DashedChip key={k} title={`This food has no value for ${NUTRIENT_BY_KEY[k].label.toLowerCase()}`}>
