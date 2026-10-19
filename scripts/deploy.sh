@@ -4,7 +4,7 @@
 # Needs `npx vercel link` to have been run once (it writes .vercel/project.json).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[ -f .vercel/project.json ] || { echo "Run 'npx vercel link' first." >&2; exit 1; }
+[ -f .vercel/project.json ] || { echo "Run 'npx vercel@64.5.0 link' first." >&2; exit 1; }
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -13,4 +13,5 @@ rsync -a --exclude-from=<(grep '^/' .vercelignore) --exclude /.git ./ "$tmp/"
 mkdir -p "$tmp/.vercel" && cp .vercel/project.json "$tmp/.vercel/"
 
 cd "$tmp"
-npx vercel deploy --prod --yes --archive=tgz "$@"
+# Pinned, so a broken new CLI release can't block a deploy. Override with VERCEL_CLI_VERSION=x.y.z.
+npx --yes "vercel@${VERCEL_CLI_VERSION:-64.5.0}" deploy --prod --yes --archive=tgz "$@"
