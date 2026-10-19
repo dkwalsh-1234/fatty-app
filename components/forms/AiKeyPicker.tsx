@@ -22,7 +22,9 @@ export function AiKeyPicker({ current, onSaved, onDeleted, onSkip, dock }: {
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState<'test' | 'save' | 'delete' | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [replacing, setReplacing] = useState(!current);
+  // Only set by Replace and Delete. Whether a key is saved comes from `current`, which can arrive
+  // after the first render (the app loads it in the background), so it isn't frozen here.
+  const [replacing, setReplacing] = useState(false);
 
   async function call(save: boolean) {
     if (!provider || !key.trim()) return;

@@ -12,7 +12,7 @@ import { KEY_SCREEN_COPY } from '@/lib/ai/config';
 import { localDate } from '@/lib/dates';
 import { devFixtures, devProfile } from './fixtures';
 
-/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | goal | settings | aikey */
+/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | goal | settings | aikey; &key=1 gives the sample account a saved AI key */
 type ScreenName = 'today' | 'sheet' | 'sheet-ml' | 'sheet-meal' | 'goal' | 'settings' | 'aikey';
 
 export function DevPreview() {
@@ -27,7 +27,11 @@ function Preview() {
   const params = useSearchParams();
   const screen = (params.get('screen') ?? 'today') as ScreenName;
   const today = localDate(devProfile.time_zone);
-  const fixtures = useMemo(() => devFixtures(today), [today]);
+  const withKey = params.get('key') === '1';
+  const fixtures = useMemo(
+    () => ({ ...devFixtures(today), aiKey: withKey ? { provider: 'anthropic' as const, key_last4: '7AAA', model: null, verified_at: '2026-10-19T19:49:59Z' } : null }),
+    [today, withKey],
+  );
   return (
     <AppProvider initial={{ email: 'daniel@example.com', isAdmin: true, profile: devProfile }} fixtures={fixtures}>
       {screen === 'goal' ? (
