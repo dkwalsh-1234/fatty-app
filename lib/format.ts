@@ -47,7 +47,12 @@ export const nutrientUnit = (key: NutrientKey, unit: EnergyUnit = 'kcal') =>
   key === 'energy_kj' ? unitLabel(unit) : NUTRIENT_BY_KEY[key].unit;
 
 /** Amount shown on log rows: "45 g", "220 ml". */
-export const amountText = (amount: number, unit: 'g' | 'ml') => `${amount >= 100 || Number.isInteger(amount) ? int(amount) : one(amount)} ${unit}`;
+/** "45 g", "250 ml", "1 regular cup", "2 × slice". */
+export function amountText(amount: number, unit: 'g' | 'ml' | 'measure', measure?: string | null): string {
+  const n = amount >= 100 || Number.isInteger(amount) ? int(amount) : one(amount);
+  if (unit !== 'measure') return `${n} ${unit}`;
+  return amount === 1 ? `1 ${measure ?? 'serve'}` : `${n} × ${measure ?? 'serve'}`;
+}
 
 /** Weight in kg to one decimal: "86.6". */
 export const kg = (n: number) => (Math.round(n * 10) / 10).toFixed(1);

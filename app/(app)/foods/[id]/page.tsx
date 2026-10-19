@@ -132,7 +132,7 @@ export default function FoodPage() {
           )}
           {measures.map((m) => (
             <div key={m.id} className="flex min-h-12 items-center gap-2 border-t border-separator">
-              <span className="min-w-0 flex-1 truncate text-[15px]">{m.label}</span>
+              <span className="line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug">{m.label}</span>
               <span className="text-[15px] text-ink2 tnum">{int(m.grams)} g</span>
               {m.owner_id === me && (
                 <button

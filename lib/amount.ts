@@ -1,47 +1,202 @@
-// The amount sheet's maths: shortcut chips, units, and the per-100 g values a log entry snapshots.
-// Grams are the default unit everywhere; ml and serves are shortcuts that convert to grams.
+// The amount sheet's maths: units, shortcut chips, and the per-100 g values a log entry snapshots.
+// Grams are the truth for every total. People enter amounts in the unit they think in: grams, ml,
+// a kitchen measure (cup, tbsp, tsp), a household measure from FSANZ ("slice", "medium"), a pack's
+// serve, or a typical size where the data has none (café cups, a glass, a slice of bread).
 
-import { int } from './format';
+import { amountText, int } from './format';
 import { emptyPer100, NUTRIENT_KEYS, type Per100 } from './nutrients';
 import type { Food, FoodStats, Measure } from './types';
+
+/** A unit the amount field can be in. Every unit converts to grams. */
+export interface AmountUnit {
+  kind: 'g' | 'ml' | 'measure';
+  /** "g", "ml", or the measure's name: "regular cup", "slice", "tbsp". */
+  label: string;
+  /** Grams in one of this unit (for ml, the density). */
+  grams: number;
+  /** Shown beside a measure: "280 ml", "36 g". */
+  hint: string | null;
+  /** The grams are a typical size or an assumed density, so entries in it are marked estimated. */
+  estimate: boolean;
+  /** Something you count whole (a slice, a medium apple, a cup of coffee, a serve): opens as 1. */
+  countable: boolean;
+  /** A kitchen measure (cup, tbsp, tsp) worked out from the density: offered as a unit, not a chip. */
+  kitchen?: boolean;
+}
+
+/** Australian kitchen measures, offered for anything with a density. */
+export const KITCHEN_ML = [
+  { label: 'cup', ml: 250, own: /^cups?\b/i },
+  { label: 'tbsp', ml: 20, own: /^(tablespoons?|tbsp)\b/i },
+  { label: 'tsp', ml: 5, own: /^(teaspoons?|tsp)\b/i },
+] as const;
+
+/**
+ * Café cup sizes, for coffees, teas and hot chocolates FSANZ lists only per 100 g. A rough guide,
+ * to be confirmed: cafés vary, and you can always switch to ml.
+ */
+export const CAFE_CUPS_ML = [
+  { label: 'small cup', ml: 220 },
+  { label: 'regular cup', ml: 280 },
+  { label: 'large cup', ml: 350 },
+] as const;
+const GLASS_ML = 250;
+const BREAD_SLICE_G = 35;
+
+const CAFE_DRINK = /^(coffee|tea|chai|hot chocolate|drinking chocolate|babyccino|matcha|mocha|latte|cappuccino|flat white|long black|macchiato|iced coffee|iced latte)\b/i;
+const NOT_MADE_UP = /\b(powder|beans?|granules|leaves|leaf|dry|dried|mix|bags?|pods?|capsules?)\b/i;
+const OTHER_DRINK = /\b(milk|juice|water|soft drink|cola|lemonade|cordial|smoothie|milkshake|shake|kombucha|kefir|soda|tonic|drink|beverage)\b/i;
+const NOT_A_DRINK = /\b(chocolate|biscuits?|bar|cereal|powder|cheese|yoghurt|yogurt|ice cream|dessert|custard)\b/i;
+/** Measures that are just an amount ("100 millilitres"): the ml and g units already cover them. */
+const PLAIN_AMOUNT = /^\d+(\.\d+)?\s*(millilitres?|milliliters?|ml|grams?|g)\b/i;
+
+const g = (n: number) => `${int(n)} g`;
+
+type UnitFood = Pick<Food, 'name' | 'display_name' | 'source' | 'is_liquid' | 'density_g_per_ml' | 'serving_g' | 'pack_g' | 'total_weight_g' | 'serves'>;
+
+export const GRAMS: AmountUnit = { kind: 'g', label: 'g', grams: 1, hint: null, estimate: false, countable: false };
+
+/** A household measure as a unit: "1 slice, regular" → "slice, regular". */
+export function measureUnit(m: Pick<Measure, 'label' | 'grams'>): AmountUnit {
+  const one = /^1\s+/.test(m.label);
+  const label = m.label.replace(/^1\s+/, '').trim();
+  return { kind: 'measure', label, grams: m.grams, hint: g(m.grams), estimate: false, countable: one && !KITCHEN_ML.some((k) => k.own.test(label)) };
+}
+
+/** Typical sizes where the data has none: café cups, a glass for drinks, a slice of bread. */
+export function typicalUnits(food: UnitFood, household: AmountUnit[]): AmountUnit[] {
+  const name = (food.display_name ?? food.name).trim();
+  const dens = density(food);
+  const volume = food.is_liquid || food.density_g_per_ml != null;
+  const has = (re: RegExp) => household.some((u) => re.test(u.label));
+  const out: AmountUnit[] = [];
+  const vol = (label: string, ml: number): AmountUnit => ({ kind: 'measure', label, grams: ml * dens.gPerMl, hint: `${ml} ml`, estimate: true, countable: true });
+  if (volume && CAFE_DRINK.test(name) && !NOT_MADE_UP.test(name) && !has(/\bcups?\b/i)) {
+    for (const c of CAFE_CUPS_ML) out.push(vol(c.label, c.ml));
+  } else if (food.is_liquid && OTHER_DRINK.test(name) && !NOT_A_DRINK.test(name) && !household.length) {
+    out.push(vol('glass', GLASS_ML));
+  }
+  if (/^bread\b/i.test(name) && !has(/\bslices?\b/i)) {
+    out.push({ kind: 'measure', label: 'slice', grams: BREAD_SLICE_G, hint: g(BREAD_SLICE_G), estimate: true, countable: true });
+  }
+  return out;
+}
+
+/**
+ * Every unit a food can be entered in, most natural first: grams; ml for drinks and anything with a
+ * density; typical sizes; FSANZ household measures (yours first); a pack's serve and whole pack;
+ * then cup, tbsp and tsp unless FSANZ already gives that food its own.
+ */
+export function unitOptions(food: UnitFood, measures: Measure[]): AmountUnit[] {
+  const dens = density(food);
+  const volume = food.is_liquid || food.density_g_per_ml != null;
+  const sorted = [...measures].sort((a, b) => (a.owner_id ? 0 : 1) - (b.owner_id ? 0 : 1) || a.rank - b.rank);
+  const household = sorted.filter((m) => m.grams > 0 && !PLAIN_AMOUNT.test(m.label)).map(measureUnit);
+  const out: AmountUnit[] = [GRAMS];
+  if (volume) out.push({ kind: 'ml', label: 'ml', grams: dens.gPerMl, hint: null, estimate: dens.assumed, countable: false });
+  out.push(...typicalUnits(food, household), ...household);
+  if (food.source === 'meal') {
+    if (food.serves && food.total_weight_g) out.push({ kind: 'measure', label: 'serve', grams: food.total_weight_g / food.serves, hint: g(food.total_weight_g / food.serves), estimate: false, countable: true });
+  } else {
+    if (food.serving_g) out.push({ kind: 'measure', label: 'serve', grams: food.serving_g, hint: g(food.serving_g), estimate: false, countable: true });
+    if (food.pack_g) out.push({ kind: 'measure', label: 'pack', grams: food.pack_g, hint: g(food.pack_g), estimate: false, countable: true });
+  }
+  if (volume) {
+    for (const k of KITCHEN_ML) {
+      if (!household.some((u) => k.own.test(u.label))) out.push({ kind: 'measure', label: k.label, grams: k.ml * dens.gPerMl, hint: `${k.ml} ml`, estimate: dens.assumed, countable: false, kitchen: true });
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter((u) => {
+    const key = u.label.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** The unit your last amount was in, from the units on offer, or rebuilt from the stats. */
+export function lastUnit(units: AmountUnit[], stats: FoodStats): { unit: AmountUnit; amount: number } | null {
+  if (!stats.last_grams) return null;
+  if (stats.last_unit === 'measure' && stats.last_measure && stats.last_amount) {
+    const u = units.find((x) => x.kind === 'measure' && x.label === stats.last_measure);
+    return {
+      unit: u ?? { kind: 'measure', label: stats.last_measure, grams: stats.last_grams / stats.last_amount, hint: null, estimate: false, countable: true },
+      amount: stats.last_amount,
+    };
+  }
+  const ml = units.find((u) => u.kind === 'ml');
+  if (stats.last_unit === 'ml' && stats.last_amount && ml) return { unit: ml, amount: stats.last_amount };
+  return { unit: GRAMS, amount: stats.last_grams };
+}
+
+/**
+ * Where the amount field starts (option 2 from testing): what you typed in Search; else your last
+ * amount for this food, in its unit; else a regular café cup, one of the food's countable measures
+ * (preferring "medium" or "regular") or one serve; else ml for drinks; else grams.
+ */
+export function naturalStart(
+  food: UnitFood,
+  units: AmountUnit[],
+  stats: FoodStats | null,
+  prefill?: { amount?: number | null; unit?: 'g' | 'ml' | null; count?: number | null },
+): { unit: AmountUnit; amount: number | null; fromLast: boolean } {
+  const ml = units.find((u) => u.kind === 'ml');
+  if (prefill?.amount) return { unit: prefill.unit === 'ml' && ml ? ml : GRAMS, amount: prefill.amount, fromLast: false };
+  const countable = units.filter((u) => u.kind === 'measure' && u.countable);
+  if (prefill?.count) {
+    const c = countable.find((u) => u.label !== 'pack');
+    if (c) return { unit: c, amount: prefill.count, fromLast: false };
+  }
+  const last = stats ? lastUnit(units, stats) : null;
+  if (last) return { ...last, fromLast: true };
+  if (food.source !== 'meal') {
+    const pick =
+      countable.find((u) => u.label === 'regular cup') ??
+      countable.find((u) => /\b(medium|regular)\b/i.test(u.label) && u.label !== 'pack') ??
+      countable.find((u) => u.label !== 'pack');
+    if (pick) return { unit: pick, amount: 1, fromLast: false };
+  }
+  if (food.is_liquid && ml) return { unit: ml, amount: null, fromLast: false };
+  return { unit: GRAMS, amount: null, fromLast: false };
+}
 
 export interface AmountChip {
   key: string;
   label: string;
-  grams: number;
-  kind: 'last' | 'serve' | 'pack' | 'meal-serve' | 'half' | 'whole' | 'measure';
+  /** What the chip sets: an amount in a unit. */
+  unit: AmountUnit;
+  amount: number;
+  kind: 'last' | 'meal-serve' | 'half' | 'whole' | 'measure';
 }
 
-const g = (n: number) => `${int(n)} g`;
-
 /**
- * At most five chips, in the brief's order: your last amount; the pack's serve size; whole pack;
- * for a meal, one serve, half and the whole meal; then the most-used household measures.
- * Chips with the same gram value as an earlier one are dropped.
+ * At most five quick picks: your last amount; for a meal, one serve, half and the whole meal; then
+ * measures you count (typical sizes, FSANZ household measures, the pack's serve and whole pack).
+ * A measure chip sets 1 of it, and tapping it again adds another. Repeats of the same weight drop.
  */
-export function buildChips(food: Pick<Food, 'source' | 'serving_g' | 'pack_g' | 'total_weight_g' | 'serves'>, measures: Measure[], stats: FoodStats | null): AmountChip[] {
+export function buildChips(food: UnitFood, units: AmountUnit[], stats: FoodStats | null): AmountChip[] {
   const out: AmountChip[] = [];
   const add = (c: AmountChip) => {
-    if (!(c.grams > 0)) return;
-    if (out.some((o) => Math.abs(o.grams - c.grams) < 0.5)) return;
+    const grams = c.unit.grams * c.amount;
+    if (!(grams > 0)) return;
+    if (out.some((o) => Math.abs(o.unit.grams * o.amount - grams) < 0.5)) return;
     out.push(c);
   };
-  if (stats?.last_grams) {
-    const last = stats.last_unit === 'ml' && stats.last_amount ? `${int(stats.last_amount)} ml` : g(stats.last_grams);
-    add({ key: 'last', label: `Last · ${last}`, grams: stats.last_grams, kind: 'last' });
-  }
+  const last = stats ? lastUnit(units, stats) : null;
+  if (last) add({ key: 'last', label: `Last · ${amountText(last.amount, last.unit.kind, last.unit.label)}`, unit: last.unit, amount: last.amount, kind: 'last' });
   if (food.source === 'meal') {
     const total = food.total_weight_g ?? 0;
-    if (food.serves && total) add({ key: 'serve', label: `1 serve · ${g(total / food.serves)}`, grams: total / food.serves, kind: 'meal-serve' });
-    if (total) add({ key: 'half', label: `Half · ${g(total / 2)}`, grams: total / 2, kind: 'half' });
-    if (total) add({ key: 'whole', label: `Whole · ${g(total)}`, grams: total, kind: 'whole' });
+    if (food.serves && total) add({ key: 'serve', label: `1 serve · ${g(total / food.serves)}`, unit: GRAMS, amount: total / food.serves, kind: 'meal-serve' });
+    if (total) add({ key: 'half', label: `Half · ${g(total / 2)}`, unit: GRAMS, amount: total / 2, kind: 'half' });
+    if (total) add({ key: 'whole', label: `Whole · ${g(total)}`, unit: GRAMS, amount: total, kind: 'whole' });
   } else {
-    if (food.serving_g) add({ key: 'serve', label: `1 serve · ${g(food.serving_g)}`, grams: food.serving_g, kind: 'serve' });
-    if (food.pack_g) add({ key: 'pack', label: `Whole pack · ${g(food.pack_g)}`, grams: food.pack_g, kind: 'pack' });
+    for (const u of units) {
+      if (u.kind !== 'measure' || u.kitchen) continue;
+      const label = u.label === 'serve' ? `1 serve · ${u.hint}` : u.label === 'pack' ? `Whole pack · ${u.hint}` : `1 ${u.label} · ${u.hint}`;
+      add({ key: `u:${u.label}`, label, unit: u, amount: 1, kind: 'measure' });
+    }
   }
-  // Your own measures first, then AUSNUT's most-used.
-  const sorted = [...measures].sort((a, b) => (a.owner_id ? 0 : 1) - (b.owner_id ? 0 : 1) || a.rank - b.rank);
-  for (const m of sorted) add({ key: `m:${m.id}`, label: `${m.label} · ${g(m.grams)}`, grams: m.grams, kind: 'measure' });
   return out.slice(0, 5);
 }
 
@@ -49,7 +204,8 @@ export function buildChips(food: Pick<Food, 'source' | 'serving_g' | 'pack_g' | 
 export function measureChipLabel(chip: AmountChip, count: number): string {
   if (chip.kind !== 'measure' || count <= 1) return chip.label;
   const base = chip.label.split(' · ')[0];
-  return `${count} × ${base} · ${g(chip.grams * count)}`;
+  const per = chip.unit.hint?.endsWith(' ml') ? `${int(Number(chip.unit.hint.replace(' ml', '')) * count)} ml` : g(chip.unit.grams * count);
+  return `${count} × ${base} · ${per}`;
 }
 
 /** Density for ml → g. AUSNUT's where known; otherwise 1 g/ml and the entry is marked estimated. */
@@ -59,6 +215,15 @@ export function density(food: Pick<Food, 'density_g_per_ml'>): { gPerMl: number;
 
 export function toGrams(amount: number, unit: 'g' | 'ml', gPerMl: number): number {
   return unit === 'ml' ? amount * gPerMl : amount;
+}
+
+/** An amount in a unit, in grams. */
+export const unitGrams = (amount: number, unit: AmountUnit) => amount * unit.grams;
+
+/** Switching from an amount nobody typed (a prefill or a chip) converts it; one decimal, or whole grams. */
+export function convertAmount(amount: number, from: AmountUnit, to: AmountUnit): number {
+  const n = (amount * from.grams) / to.grams;
+  return to.kind === 'g' || to.kind === 'ml' ? Math.round(n) : Math.round(n * 10) / 10;
 }
 
 /** Parse what's typed in the amount field: digits with one "." or ",". */

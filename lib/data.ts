@@ -34,6 +34,7 @@ export function toEntry(r: Record<string, unknown>): LogEntry {
     ...(r as unknown as LogEntry),
     grams: Number(r.grams),
     entered_amount: Number(r.entered_amount),
+    entered_measure: (r.entered_measure as string | null) ?? null,
     per100_snapshot: toPer100(r.per100_snapshot as Record<string, unknown>),
   };
 }
@@ -170,7 +171,8 @@ export interface NewEntry {
   source_snapshot: string | null;
   grams: number;
   entered_amount: number;
-  entered_unit: 'g' | 'ml';
+  entered_unit: 'g' | 'ml' | 'measure';
+  entered_measure?: string | null;
   per100_snapshot: Per100;
   ingredient_adjustments?: IngredientAdjustment | null;
   is_estimate?: boolean;
@@ -222,6 +224,7 @@ export async function copyEntries(entries: LogEntry[], toDate: string, meal: Mea
         grams: e.grams,
         entered_amount: e.entered_amount,
         entered_unit: e.entered_unit,
+        entered_measure: e.entered_measure,
         per100_snapshot: e.per100_snapshot,
         ingredient_adjustments: e.ingredient_adjustments,
         is_estimate: e.is_estimate,
@@ -248,8 +251,9 @@ export interface SearchResult {
   missing_nutrients: string[];
   use_count: number | null;
   last_grams: number | null;
-  last_unit: 'g' | 'ml' | null;
+  last_unit: 'g' | 'ml' | 'measure' | null;
   last_amount: number | null;
+  last_measure: string | null;
   score: number | null;
   /** 1 = every word matched, 2 = some words, 3 = similar spelling only. */
   tier: 1 | 2 | 3 | null;

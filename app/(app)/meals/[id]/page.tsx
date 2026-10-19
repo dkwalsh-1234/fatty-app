@@ -261,7 +261,7 @@ function MealEditor() {
             const label = i.food.display_name ?? i.food.name;
             return (
               <div key={`${i.food.id}-${idx}`} className="flex h-[50px] items-center gap-2.5 border-t border-separator">
-                <span className="min-w-0 flex-1 truncate text-[15px]">{label}</span>
+                <span className="line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug">{label}</span>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -454,7 +454,7 @@ function IngredientSearch({ open, onClose, onPick }: { open: boolean; onClose: (
               onClick={async () => onPick(await getFood(r.id))}
               className="flex min-h-12 w-full flex-col justify-center border-0 border-t border-separator bg-transparent py-2 text-left first:border-t-0"
             >
-              <span className="truncate text-[15px]">{r.display_name ?? r.name}</span>
+              <span className="line-clamp-2 text-[15px] leading-snug">{r.display_name ?? r.name}</span>
               <span className="text-[12px] text-ink2">{[r.brand, SOURCE_TAG[r.source]].filter(Boolean).join(' · ')}</span>
             </button>
           ))}

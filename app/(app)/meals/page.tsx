@@ -67,7 +67,7 @@ export default function MealsPage() {
                 onClick={() => app.openAmount({ kind: 'food', foodId: m.food.id, food: m.food, method: 'meal' })}
                 className="min-w-0 flex-1 border-0 bg-transparent py-2 text-left"
               >
-                <span className="block truncate text-[15px]">{m.food.display_name ?? m.food.name}</span>
+                <span className="line-clamp-2 text-[15px] leading-snug">{m.food.display_name ?? m.food.name}</span>
                 <span className="block text-[13px] text-ink2 tnum">
                   {m.food.total_weight_g ? `${int(m.food.total_weight_g)} g` : 'No ingredients yet'}
                   {m.food.energy_kj != null && ` · ${energyText(m.food.energy_kj, app.profile.energy_unit)} per 100 g`}

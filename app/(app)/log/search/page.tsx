@@ -36,7 +36,7 @@ interface RowData {
   source: SearchResult['source'];
   is_liquid: boolean;
   energy_kj: number | null;
-  last: { grams: number; amount: number | null; unit: 'g' | 'ml' | null } | null;
+  last: { grams: number; amount: number | null; unit: 'g' | 'ml' | 'measure' | null; measure?: string | null } | null;
 }
 
 const fromListed = (l: ListedFood): RowData => ({
@@ -46,7 +46,7 @@ const fromListed = (l: ListedFood): RowData => ({
   source: l.food.source,
   is_liquid: l.food.is_liquid,
   energy_kj: l.food.energy_kj,
-  last: l.stats?.last_grams ? { grams: l.stats.last_grams, amount: l.stats.last_amount, unit: l.stats.last_unit } : null,
+  last: l.stats?.last_grams ? { grams: l.stats.last_grams, amount: l.stats.last_amount, unit: l.stats.last_unit, measure: l.stats.last_measure } : null,
 });
 
 const fromCandidate = (c: Candidate): RowData => ({
@@ -68,7 +68,7 @@ const fromResult = (r: SearchResult): RowData => ({
   source: r.source,
   is_liquid: r.is_liquid,
   energy_kj: r.energy_kj,
-  last: r.last_grams ? { grams: r.last_grams, amount: r.last_amount, unit: r.last_unit } : null,
+  last: r.last_grams ? { grams: r.last_grams, amount: r.last_amount, unit: r.last_unit, measure: r.last_measure } : null,
 });
 
 function Search() {
@@ -236,7 +236,7 @@ function Search() {
           <section className="rounded-log-card bg-surface pb-3 pl-5 pr-4 shadow-[var(--cc-card-shadow)]">
             {ai.found.items.map((i) => (
               <div key={i.key} className="flex min-h-[46px] items-center gap-2.5 border-t border-separator py-2 first:border-t-0">
-                <span className="min-w-0 flex-1 truncate text-[15px]">
+                <span className="line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug">
                   {i.candidates[0] ? (i.candidates[0].display_name ?? i.candidates[0].name) : <>{i.label} <span className="text-ink2">· not matched</span></>}
                 </span>
                 <span className="text-[13px] text-ink2 tnum">≈ {int(i.grams ?? 0)} g</span>
@@ -314,7 +314,7 @@ function List({ title, rows, unit, onOpen, showSource, more }: {
               className="flex min-h-[52px] w-full items-center gap-2.5 border-0 border-t border-separator bg-transparent py-2 pr-3.5 text-left first:border-t-0"
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] text-ink">{r.name}</span>
+                <span className="line-clamp-2 text-[15px] leading-snug text-ink">{r.name}</span>
                 {(showSource || r.sub) && (
                   <span className="block truncate text-[12px] text-ink2">
                     {[r.sub, showSource ? SOURCE_TAG[r.source] : null].filter(Boolean).join(' · ')}
@@ -322,7 +322,11 @@ function List({ title, rows, unit, onOpen, showSource, more }: {
                 )}
               </span>
               <span className="text-right text-[13px] text-ink2 tnum">
-                {r.last ? amountText(r.last.unit === 'ml' && r.last.amount ? r.last.amount : r.last.grams, r.last.unit ?? 'g') : 'per 100 g'}
+                {r.last
+                  ? r.last.unit && r.last.unit !== 'g' && r.last.amount
+                    ? amountText(r.last.amount, r.last.unit, r.last.measure)
+                    : amountText(r.last.grams, 'g')
+                  : 'per 100 g'}
               </span>
               <span className="w-12 text-right text-[15px] font-medium tnum">{kj == null ? '–' : r.last ? int(unit === 'kj' ? kj : kj / 4.184) : energyText(kj, unit, false)}</span>
             </button>
