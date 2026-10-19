@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "fatty-dev",
+      "name": "fatty",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": ["--prefix", "/Users/dkwalsh/MyApps/Fatty-App", "run", "dev"],
       "port": 3000
     }
   ]

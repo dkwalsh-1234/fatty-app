@@ -15,6 +15,17 @@ export function LoginForm({ next, initialError }: { next: string; initialError: 
     if (state.ok) router.replace(state.next ?? "/");
   }, [state, router]);
 
+  // When the app's address isn't on Supabase's redirect list, invite and sign-in links fall back to
+  // the Site URL with the session in the URL fragment, and end up here. Pass them on to be read.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (/access_token=|error_description=/.test(hash)) {
+      const type = new URLSearchParams(hash.slice(1)).get("type");
+      const to = type === "invite" || type === "recovery" ? "/welcome" : next;
+      window.location.replace(`/auth/accept?next=${encodeURIComponent(to)}${hash}`);
+    }
+  }, [next]);
+
   return (
     <Screen dock={false} className="pt-[12dvh]">
       <div className="mb-6 px-1">
