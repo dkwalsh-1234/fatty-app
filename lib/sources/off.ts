@@ -40,6 +40,12 @@ const numOrNull = (v: unknown): number | null => {
   return Number.isFinite(n) && n >= 0 ? n : null;
 };
 
+/** Serving and pack sizes must be above 0 (a "0" on Open Food Facts means unknown). */
+const positiveOrNull = (v: unknown): number | null => {
+  const n = numOrNull(v);
+  return n != null && n > 0 ? n : null;
+};
+
 /** Maps an Open Food Facts product to a foods row. Returns null when there's no energy value (a miss). */
 export function mapOffProduct(barcode: string, p: OffProduct): FoodRow | null {
   const n = p.nutriments ?? {};
@@ -68,8 +74,8 @@ export function mapOffProduct(barcode: string, p: OffProduct): FoodRow | null {
     sugars_g: numOrNull(n['sugars_100g']),
     fibre_g: numOrNull(n['fiber_100g']),
     sodium_mg: sodiumG == null ? null : Math.round(sodiumG * 1000 * 10) / 10,
-    serving_g: numOrNull(p.serving_quantity),
-    pack_g: numOrNull(p.product_quantity),
+    serving_g: positiveOrNull(p.serving_quantity),
+    pack_g: positiveOrNull(p.product_quantity),
     is_liquid: liquid,
     density_g_per_ml: null,
     raw: p,

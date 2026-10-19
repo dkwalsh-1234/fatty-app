@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { TEXT_SYSTEM, textPrompt } from "@/lib/ai/prompts";
-import { aiErrorBody, runAi, userAi } from "@/lib/ai/run";
+import { resolveWeakItems } from "@/lib/ai/resolve";
+import { aiErrorBody, runAi, userAi, type UserAi } from "@/lib/ai/run";
 import { TextParseSchema, type TextParseResult } from "@/lib/ai/schemas";
 import { bad, json, readJson, routeUser } from "@/lib/api";
 import { draftFromText, tryLocalText, type Draft } from "@/lib/drafts";
@@ -24,10 +25,10 @@ export async function POST(req: Request) {
   const { data: seen } = await auth.sb.from("text_parses").select("id, ai_response").eq("input_hash", hash).maybeSingle();
   let result: TextParseResult;
   let id: string | undefined = seen?.id;
+  let ai: UserAi | undefined;
   if (seen) {
     result = seen.ai_response as TextParseResult;
   } else {
-    let ai;
     try {
       ai = await userAi(auth.user.id);
     } catch (e) {
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
     id = row?.id;
   }
   if (!result.items.length) return bad("Couldn't find any foods in that. Try listing them with commas.", 422);
-  const items = await draftFromText(auth.sb, result.items);
+  // Items search can't match go through the AI fallback (cached by phrase, so a repeat costs nothing).
+  const items = await resolveWeakItems(auth.sb, auth.user.id, await draftFromText(auth.sb, result.items), ai);
   return json({ draft: { kind: "text", text, text_parse_id: id, items } satisfies Draft, ai: true });
 }

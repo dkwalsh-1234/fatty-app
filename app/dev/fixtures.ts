@@ -130,6 +130,11 @@ export function devFixtures(today: string): Fixtures {
         entry(today, '07:45', 'breakfast', 'Vegemite on toast, 2 slices', 116, toast),
         entry(today, '12:40', 'lunch', 'Chicken & salad wrap', 280, wrap),
         entry(today, '15:30', 'snack', 'Almonds', 30, almonds),
+        entry(today, '15:35', 'snack', 'Chai latte', 250, p({ energy_kj: 290, protein_g: 3, fat_g: 3, sat_fat_g: 2, trans_fat_g: null, carbs_g: 9, sugars_g: 8, fibre_g: 0, sodium_mg: 40 }), {
+          source_snapshot: 'AI estimate',
+          entered_unit: 'ml',
+          entered_amount: 250,
+        }),
       ],
       [y]: [
         entry(y, '07:30', 'breakfast', 'Untoasted fruit muesli', 60, muesli),

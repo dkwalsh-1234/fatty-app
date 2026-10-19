@@ -1,5 +1,7 @@
-// The prompts, shared by every provider. Nutrients only ever come from data: the AI identifies
-// foods, estimates grams, reads numbers off a label, or splits typed text. Never more than that.
+// The prompts, shared by every provider. Nutrients come from data: the AI identifies foods,
+// estimates grams, reads numbers off a label, splits typed text, or rewords a phrase into database
+// terms. The one exception is estimatePrompt, a last resort the person asks for, whose values are
+// stored as an "AI estimate" food and flagged wherever they're totalled.
 
 export const LABEL_SYSTEM = `You read Australian and New Zealand nutrition information panels from photos.
 Return only what is printed. Never estimate, guess or calculate a nutrient value from general knowledge.`;
@@ -49,4 +51,31 @@ Rules:
 - If a count is given instead ("2 eggs", "a banana", "three slices of toast"), return count and count_noun ("egg", "banana", "slice") and leave amount null. The app converts counts using household measures.
 - Only when neither an amount nor a count is given, return typical_grams: a typical single serve in grams. Otherwise typical_grams is null.
 - Return no calories, kilojoules or nutrients of any kind.`;
+}
+
+export const RESOLVE_SYSTEM = `You translate how people describe food into the names Australian food composition databases use (AUSNUT 2023 and AFCD), for an Australian food logging app.
+You never return calories or nutrient values.`;
+
+export function resolvePrompt(phrase: string, grams: number | null) {
+  const amount = grams ? `about ${Math.round(grams)} g` : 'one typical serve';
+  return `Someone logged: "${phrase}"${grams ? ` (${amount})` : ''}.
+Searching the database for those words found nothing useful. Say how the database would most likely name it.
+
+Rules:
+- phrasings: one to three short generic names, most likely first. Each is searched requiring every word, so use two to four key words in the database's own terms. For example "beef noodle soup", "coffee flat white cereal based milk", "milk cow regular fat" (the database says "regular fat", not "full cream"), "bread white toasted". Generic foods only: no brands, no amounts.
+- Dishes are often listed generically, like "Soup, broth with meat & noodles", "Curry, homemade, rice with beef" or "Stir fry, chicken & vegetables". When a dish may not be listed by its own name, give a phrasing in that generic style.
+- components: only for a mixed drink or dish that a database is unlikely to list as one food. List its main parts, each as two to four key words in database terms, with grams that add up to ${amount}. For example a flat white with oat milk: "coffee espresso" 30 g and "oat beverage" 210 g. Otherwise return an empty list.
+- Return no calories, kilojoules or nutrients of any kind.`;
+}
+
+export const ESTIMATE_SYSTEM = `You estimate typical nutrition values for a food, for an Australian food logging app. This is used only when no food in the app's database matches, and the app labels your numbers as an AI estimate.`;
+
+export function estimatePrompt(phrase: string) {
+  return `Estimate typical nutrition values for: "${phrase}"
+
+Rules:
+- Values per 100 g of the food as eaten, for a typical Australian version. For drinks, per 100 g is close enough to per 100 mL.
+- Energy in kJ. Sodium in mg. Carbohydrate is total carbohydrate, as on an Australian label.
+- Use your best typical figure. Return null only for a value you cannot reasonably estimate; energy is always required.
+- Set confidence low when the description is vague or could mean very different foods.`;
 }

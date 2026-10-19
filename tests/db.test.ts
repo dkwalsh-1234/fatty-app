@@ -375,3 +375,83 @@ describe("storage", () => {
     ).rejects.toThrow(/row-level security/);
   });
 });
+
+describe("AI fallbacks (item 4 and Q5)", () => {
+  it("shares cached query resolutions with everyone but only the server writes them", async () => {
+    await asService(() =>
+      db.exec(`insert into public.query_resolutions (normalised_phrase, response_json, created_by)
+               values ('flat white oat milk', '{"phrasings":["coffee, flat white, cereal based milk"],"components":[]}', '${DANIEL}')`),
+    );
+    const r = await as(FRIEND, () => db.query<{ normalised_phrase: string }>(`select normalised_phrase from public.query_resolutions`));
+    expect(r.rows.map((x) => x.normalised_phrase)).toContain("flat white oat milk");
+    await expect(
+      as(FRIEND, () => db.exec(`insert into public.query_resolutions (normalised_phrase, response_json) values ('x', '{}')`)),
+    ).rejects.toThrow(/permission denied|row-level security/);
+  });
+
+  it("keeps AI estimates private to their owner and out of people's own inserts", async () => {
+    await expect(
+      as(DANIEL, () =>
+        db.exec(`insert into public.foods (source, visibility, created_by, name, energy_kj) values ('ai', 'private', '${DANIEL}', 'Sneaky estimate', 100)`),
+      ),
+    ).rejects.toThrow(/row-level security/);
+    await expect(
+      asService(() => db.exec(`insert into public.foods (source, visibility, name, energy_kj) values ('ai', 'shared', 'Shared estimate', 100)`)),
+    ).rejects.toThrow(/foods_ai_private|check constraint/);
+    await asService(() =>
+      db.exec(`insert into public.foods (source, source_id, visibility, created_by, name, energy_kj)
+               values ('ai', '${DANIEL}:chai latte', 'private', '${DANIEL}', 'Chai latte', 290)`),
+    );
+    const mine = await as(DANIEL, () => db.query<{ name: string; source: string }>(`select name, source from public.search_foods('chai latte')`));
+    expect(mine.rows[0]).toMatchObject({ name: "Chai latte", source: "ai" });
+    const theirs = await as(FRIEND, () => db.query<{ name: string }>(`select name from public.search_foods('chai latte')`));
+    expect(theirs.rows.map((r) => r.name)).not.toContain("Chai latte");
+  });
+
+  it("counts AI-estimated values in the day totals, like missing ones", async () => {
+    await as(DANIEL, () =>
+      db.query(
+        `insert into public.log_entries (eaten_at, meal, food_name_snapshot, source_snapshot, grams, entered_amount, per100_snapshot, method)
+         values ('2026-10-21T01:00:00Z', 'breakfast', 'Chai latte', 'AI estimate', 250, 250, $1, 'search'),
+                ('2026-10-21T01:05:00Z', 'breakfast', 'Toast', 'FSANZ', 40, 40, $2, 'search')`,
+        [
+          per100({ energy_kj: 290, protein_g: 3, fat_g: 3, sat_fat_g: 2, trans_fat_g: null, carbs_g: 9, sugars_g: 8, fibre_g: 0, sodium_mg: 40 }),
+          per100({ energy_kj: 1000, protein_g: 9, fat_g: 3, sat_fat_g: 1, trans_fat_g: 0, carbs_g: 45, sugars_g: 3, fibre_g: 6, sodium_mg: 450 }),
+        ],
+      ),
+    );
+    const t = await as(DANIEL, () =>
+      one<{ entries: number; ai: Record<string, number>; missing: Record<string, number> }>(`select * from public.daily_totals('2026-10-21', '2026-10-21')`),
+    );
+    expect(t.entries).toBe(2);
+    expect(t.ai.energy_kj).toBe(1);
+    expect(t.ai.trans_fat_g).toBe(0);
+    expect(t.missing.trans_fat_g).toBe(1);
+  });
+
+  it("lets only the service role read the database size", async () => {
+    await expect(as(DANIEL, () => db.query(`select * from public.admin_db_size()`))).rejects.toThrow(/permission denied/);
+    const s = await asService(() => one<{ foods_rows: string }>(`select * from public.admin_db_size()`));
+    expect(Number(s.foods_rows)).toBeGreaterThan(0);
+  });
+});
+
+describe("search ranking with Open Food Facts products (Q3)", () => {
+  it("puts generic foods before branded products unless you type the brand", async () => {
+    await asService(() =>
+      db.exec(`insert into public.foods (source, source_id, visibility, name, brand, energy_kj) values
+        ('ausnut', 'RANK1', 'shared', 'Banana, cavendish, peeled, raw', null, 380),
+        ('off', '9399999000001', 'shared', 'Banana chip', 'Woolworths', 2200),
+        ('off', '9399999000002', 'shared', 'Oat milk barista edition', 'Oatly', 250),
+        ('off', '9399999000003', 'shared', 'Barista Oat Milk', 'Vitasoy', 240),
+        ('ausnut', 'RANK2', 'shared', 'Chicken, breast, lean, raw', null, 450),
+        ('off', '9399999000004', 'shared', 'Chicken Breast', 'Bite Me Chicken', 500)`),
+    );
+    const first = async (q: string) =>
+      (await as(DANIEL, () => one<{ name: string; brand: string | null }>(`select name, brand from public.search_foods($1, 5)`, [q]))).name;
+    expect(await first("banana")).toBe("Banana, cavendish, peeled, raw");
+    expect(await first("chicken breast")).toBe("Chicken, breast, lean, raw");
+    expect(await first("oatly barista")).toBe("Oat milk barista edition");
+    expect(await first("oatly")).toBe("Oat milk barista edition");
+  });
+});

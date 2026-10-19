@@ -59,6 +59,7 @@ export default function TrendsPage() {
             const avgRaw = known.length ? known.reduce((s, r) => s + (r.values[n.key] as number), 0) / logged.length : null;
             const avg = avgRaw == null ? null : n.key === 'energy_kj' ? energyIn(avgRaw, unit) : avgRaw;
             const gaps = logged.reduce((s, r) => s + (r.missing[n.key] ?? 0), 0);
+            const aiCount = logged.reduce((s, r) => s + (r.ai[n.key] ?? 0), 0);
             const t = app.targets.find((x) => x.nutrient === n.id);
             const fmt = n.unit === 'mg' || n.key === 'energy_kj' ? int : grams;
             const u = n.key === 'energy_kj' ? unitLabel(unit) : n.unit;
@@ -71,6 +72,7 @@ export default function TrendsPage() {
                 <span className="flex flex-wrap items-center gap-1.5 text-[15px]">
                   {n.label === 'Dietary fibre' ? 'Fibre' : n.label}
                   {gaps > 0 && <DashedChip title={`${gaps} entries had no value`}>incomplete · {gaps}</DashedChip>}
+                  {aiCount > 0 && <DashedChip title={`${aiCount} entries are AI estimates, not values from data`}>AI est. · {aiCount}</DashedChip>}
                 </span>
                 <span className="text-right text-[16px] font-medium tnum">{avg == null ? '–' : `${fmt(avg)} ${u}`}</span>
                 <span className={`text-right text-[13px] leading-snug tnum ${st && st.tone !== 'neutral' ? 'text-warn-text' : 'text-ink2'}`}>

@@ -3,7 +3,8 @@
 
 import type { NutrientKey } from '../nutrients';
 
-export type FoodSource = 'user' | 'label' | 'meal' | 'fsanz_branded' | 'off' | 'ausnut' | 'afcd';
+/** 'ai' is an AI estimate: a private food whose values came from the person's AI provider (Q5). */
+export type FoodSource = 'user' | 'label' | 'meal' | 'fsanz_branded' | 'off' | 'ausnut' | 'afcd' | 'ai';
 
 /** A row ready to upsert into `foods` (on source + source_id). */
 export type FoodRow = {

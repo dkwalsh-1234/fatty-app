@@ -148,4 +148,8 @@ export const SOURCE_TAG: Record<FoodSource, string> = {
   off: 'Open Food Facts',
   ausnut: 'FSANZ',
   afcd: 'FSANZ',
+  ai: 'AI estimate',
 };
+
+/** Log entries keep where their values came from; this one means the values are an AI estimate. */
+export const AI_ESTIMATE_TAG = 'AI estimate';

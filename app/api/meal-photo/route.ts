@@ -1,4 +1,5 @@
 import { MEAL_SYSTEM, mealPrompt } from "@/lib/ai/prompts";
+import { resolveWeakItems } from "@/lib/ai/resolve";
 import { aiErrorBody, runAi, userAi } from "@/lib/ai/run";
 import { MealPhotoSchema, type MealPhotoResult } from "@/lib/ai/schemas";
 import { bad, json, readJson, routeUser } from "@/lib/api";
@@ -38,7 +39,8 @@ export async function POST(req: Request) {
   result = { items: result.items.map((i) => ({ ...i, name: noEmDash(i.name), display_name: noEmDash(i.display_name) })) };
   if (!result.items.length) return bad("No food found in that photo. Try again closer up, or type it instead.", 422);
 
-  const items = await draftFromPhoto(auth.sb, result);
+  // Items search can't match go through the AI fallback before the person sees the draft.
+  const items = await resolveWeakItems(auth.sb, auth.user.id, await draftFromPhoto(auth.sb, result), ai);
   const { data: row, error } = await admin()
     .from("meal_photos")
     .insert({ owner_id: auth.user.id, storage_path: body.photo_path, hint, provider: ai.provider, model: ai.model, ai_response: { ai: result } })

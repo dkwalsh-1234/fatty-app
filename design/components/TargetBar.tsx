@@ -20,6 +20,8 @@ export interface TargetBarProps {
   colour?: string;
   /** Number of today's entries with this nutrient missing (null). Shows the "incomplete · n" chip. */
   incomplete?: number;
+  /** Number of today's entries whose value here is an AI estimate. Shows the "AI est. · n" chip. */
+  aiEstimates?: number;
   /** Number format for the value and captions. Defaults to grams(): 112, 6.4, 38. */
   format?: (n: number) => string;
 }
@@ -44,7 +46,7 @@ export function targetState({ value, direction, min = 0, max, unit = 'g', format
 }
 
 export function TargetBar(props: TargetBarProps) {
-  const { name, value, unit, direction, min, max, colour = C.ink2, incomplete = 0, format = grams } = props;
+  const { name, value, unit, direction, min, max, colour = C.ink2, incomplete = 0, aiEstimates = 0, format = grams } = props;
   const st = targetState(props);
   const of = direction === 'range' ? `/ ${format(min ?? 0)}–${format(max)}` : direction === 'noMoreThan' ? `/ ${format(max)} max` : `/ ${format(max)}`;
   const warnText = st.tone !== 'neutral';
@@ -68,6 +70,11 @@ export function TargetBar(props: TargetBarProps) {
               incomplete · {incomplete}
             </span>
           )}
+          {aiEstimates > 0 && (
+            <span title={`${aiEstimates} of today's entries have an AI estimate for ${name.toLowerCase()}, not a value from data`} style={{ fontSize: 11, fontWeight: 600, color: C.ink2, border: `1.5px dashed ${C.ink3}`, borderRadius: 9, padding: '0 7px' }}>
+              AI est. · {aiEstimates}
+            </span>
+          )}
         </span>
         <span style={{ fontSize: 21, fontWeight: 500, fontVariantNumeric: 'tabular-nums', color: st.tone === 'over' ? C.warnText : C.ink }}>
           {value == null ? '–' : format(value)} {unit}{' '}
@@ -80,7 +87,7 @@ export function TargetBar(props: TargetBarProps) {
         aria-valuemin={0}
         aria-valuemax={direction === 'range' ? max * tokens.bar.rangeScale : max}
         aria-valuenow={value ?? 0}
-        aria-valuetext={`${value == null ? 'no value' : format(value) + ' ' + unit}, ${caption}${incomplete ? ', incomplete' : ''}`}
+        aria-valuetext={`${value == null ? 'no value' : format(value) + ' ' + unit}, ${caption}${incomplete ? ', incomplete' : ''}${aiEstimates ? ', includes AI estimates' : ''}`}
         style={{ position: 'relative', height: tokens.bar.height, borderRadius: tokens.radius.bar, overflow: 'hidden', background: C.track }}
       >
         {st.band && (
