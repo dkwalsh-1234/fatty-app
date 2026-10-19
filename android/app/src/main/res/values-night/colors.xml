@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="system_bar">#081E17</color>
+    <color name="page_bg">#081E17</color>
+    <color name="ink">#ECF7EE</color>
+    <color name="widget_surface">#112921</color>
+</resources>

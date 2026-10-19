@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fatty</string>
+    <string name="app_not_configured">Fatty isn\'t set up yet. Add FATTY_BASE_URL to android/fatty.properties, then rebuild.</string>
+
+    <string name="widget_name">Today</string>
+    <string name="widget_description">Today\'s ring and nutrients, with Scan, Photo, Search and Type.</string>
+    <string name="widget_nothing_yet">Nothing logged yet today</string>
+    <string name="widget_today">Today: %1$s Opens Fatty.</string>
+    <string name="widget_scan">Scan a barcode</string>
+    <string name="widget_photo">Take a photo</string>
+    <string name="widget_search">Search foods</string>
+    <string name="widget_type">Type what you ate</string>
+
+    <string name="health_title">Fatty and Health Connect</string>
+    <string name="health_writes">What Fatty writes: each food you log, as a nutrition record with its time, meal and name, the energy, and the nutrients Fatty knows for it (protein, fat, saturated fat, trans fat, carbohydrate, sugars, fibre and sodium). A value Fatty doesn\'t know is left out, never written as zero. Editing or deleting an entry in Fatty updates or removes its record.</string>
+    <string name="health_reads">What Fatty reads, if you allow it: total calories burned and active calories burned for the last few days, from apps such as Garmin Connect. Fatty uses them to work out today\'s energy target, and keeps each app\'s figures separate rather than adding them together. The daily figures are saved to your Fatty account.</string>
+    <string name="health_nothing_else">Fatty reads nothing else from Health Connect. Reading calories burned is a separate step, so you can allow food without it.</string>
+    <string name="health_change">You can change either permission at any time in Health Connect, or from Settings in Fatty.</string>
+</resources>

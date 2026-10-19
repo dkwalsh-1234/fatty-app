@@ -1,0 +1,219 @@
+/* Generated from tokens.json by tokens/build.mjs. Do not edit by hand. */
+
+:root {
+  color-scheme: light;
+  --cc-pine-pine: #081E17;
+  --cc-pine-surface: #112921;
+  --cc-pine-raised: #1C352C;
+  --cc-pine-band: #0D2F23;
+  --cc-pine-mint: #ECF7EE;
+  --cc-pine-mint2: #ACC5B5;
+  --cc-pine-mint3: #7A9385;
+  --cc-pine-lime: #C3F556;
+  --cc-pine-on-lime: #081E17;
+  --cc-pine-protein: #70CCEE;
+  --cc-pine-carbs: #FDBC6F;
+  --cc-pine-fat: #B699EB;
+  --cc-pine-other: #758D7F;
+  --cc-pine-warn: #FC8E72;
+  --cc-pine-track: rgba(236, 247, 238, 0.10);
+  --cc-pine-track2: rgba(236, 247, 238, 0.18);
+  --cc-pine-hairline: rgba(236, 247, 238, 0.10);
+  --cc-pine-activity-rail: rgba(195, 245, 86, 0.90);
+  --cc-pine-segment-shadow: rgba(0, 20, 12, 0.60);
+  --cc-pine-lap-shadow: rgba(0, 20, 12, 0.85);
+  --cc-bg: #E8F0E4;
+  --cc-band: #0D2F23;
+  --cc-surface: #FBFBF2;
+  --cc-raised: #DFE8DB;
+  --cc-ink: #0B2D22;
+  --cc-ink2: #496155;
+  --cc-ink3: #9DB1A3;
+  --cc-separator: rgba(11, 45, 34, 0.08);
+  --cc-track: rgba(11, 45, 34, 0.08);
+  --cc-range: rgba(11, 45, 34, 0.13);
+  --cc-accent: #2E6720;
+  --cc-focus: #2E6720;
+  --cc-focus-glow: rgba(46, 103, 32, 0.14);
+  --cc-primary: #0B2D22;
+  --cc-on-primary: #C3F556;
+  --cc-protein: #06658E;
+  --cc-carbs: #CE7C22;
+  --cc-fat: #8561BD;
+  --cc-other: #9DB1A3;
+  --cc-warn: #CD5537;
+  --cc-warn-text: #AE4024;
+  --cc-warn-tail: rgba(205, 85, 55, 0.22);
+  --cc-card-shadow: 0 1px 2px rgba(11, 45, 34, 0.06);
+  --cc-dock: rgba(13, 47, 35, 0.88);
+  --cc-dock-shadow: rgba(11, 45, 34, 0.28);
+  --cc-scrim: rgba(8, 30, 23, 0.42);
+  --cc-photo-placeholder: #CFDDCB;
+  --cc-widget-surface: #0D2F23;
+  --cc-font-sans: var(--font-geist-sans, Geist), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --cc-font-mono: var(--font-geist-mono, 'Geist Mono'), ui-monospace, monospace;
+  --cc-type-dial-size: 76px;
+  --cc-type-dial-weight: 300;
+  --cc-type-dial-tracking: -0.05em;
+  --cc-type-dial-line: 1;
+  --cc-type-amount-size: 84px;
+  --cc-type-amount-weight: 300;
+  --cc-type-amount-tracking: -0.05em;
+  --cc-type-amount-line: 1;
+  --cc-type-title-size: 32px;
+  --cc-type-title-weight: 700;
+  --cc-type-title-tracking: -0.025em;
+  --cc-type-title-line: 1.1;
+  --cc-type-screen-title-size: 30px;
+  --cc-type-screen-title-weight: 600;
+  --cc-type-screen-title-tracking: -0.025em;
+  --cc-type-screen-title-line: 1.15;
+  --cc-type-figure-size: 21px;
+  --cc-type-figure-weight: 500;
+  --cc-type-figure-tracking: 0;
+  --cc-type-figure-line: 1.2;
+  --cc-type-headline-size: 17px;
+  --cc-type-headline-weight: 600;
+  --cc-type-headline-tracking: 0;
+  --cc-type-headline-line: 1.3;
+  --cc-type-body-size: 15px;
+  --cc-type-body-weight: 400;
+  --cc-type-body-tracking: 0;
+  --cc-type-body-line: 1.45;
+  --cc-type-body-large-size: 16px;
+  --cc-type-body-large-weight: 500;
+  --cc-type-body-large-tracking: 0;
+  --cc-type-body-large-line: 1.4;
+  --cc-type-caption-size: 13px;
+  --cc-type-caption-weight: 400;
+  --cc-type-caption-tracking: 0;
+  --cc-type-caption-line: 1.4;
+  --cc-type-small-size: 12px;
+  --cc-type-small-weight: 400;
+  --cc-type-small-tracking: 0;
+  --cc-type-small-line: 1.35;
+  --cc-type-label-size: 12px;
+  --cc-type-label-weight: 600;
+  --cc-type-label-tracking: 0.08em;
+  --cc-type-label-line: 1.2;
+  --cc-type-button-size: 16px;
+  --cc-type-button-weight: 600;
+  --cc-type-button-tracking: 0;
+  --cc-type-button-line: 1;
+  --cc-type-dock-label-size: 11px;
+  --cc-type-dock-label-weight: 600;
+  --cc-type-dock-label-tracking: 0;
+  --cc-type-dock-label-line: 1;
+  --cc-space-1: 4px;
+  --cc-space-2: 8px;
+  --cc-space-3: 12px;
+  --cc-space-4: 16px;
+  --cc-space-5: 20px;
+  --cc-space-6: 24px;
+  --cc-space-8: 32px;
+  --cc-gutter: 16px;
+  --cc-card-padding: 20px;
+  --cc-card-gap: 12px;
+  --cc-row-height: 48px;
+  --cc-list-row-height: 46px;
+  --cc-touch-target: 44px;
+  --cc-band-height: 488px;
+  --cc-dock-height: 64px;
+  --cc-dock-inset: 16px;
+  --cc-radius-chip: 18px;
+  --cc-radius-field: 24px;
+  --cc-radius-button: 26px;
+  --cc-radius-card: 26px;
+  --cc-radius-log-card: 24px;
+  --cc-radius-sheet: 32px;
+  --cc-radius-dock: 34px;
+  --cc-radius-band: 36px;
+  --cc-radius-tile: 16px;
+  --cc-radius-widget: 32px;
+  --cc-radius-bar: 4px;
+  --cc-dock-blur: 24px;
+  --cc-dock-saturate: 1.4;
+  --cc-dock-hairline: 0 0 0 1px rgba(236, 247, 238, 0.10);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --cc-bg: #081E17;
+    --cc-band: #081E17;
+    --cc-surface: #112921;
+    --cc-raised: #1C352C;
+    --cc-ink: #ECF7EE;
+    --cc-ink2: #ACC5B5;
+    --cc-ink3: #7A9385;
+    --cc-separator: rgba(236, 247, 238, 0.08);
+    --cc-track: rgba(236, 247, 238, 0.10);
+    --cc-range: rgba(236, 247, 238, 0.16);
+    --cc-accent: #C3F556;
+    --cc-focus: #C3F556;
+    --cc-focus-glow: rgba(195, 245, 86, 0.14);
+    --cc-primary: #C3F556;
+    --cc-on-primary: #081E17;
+    --cc-protein: #70CCEE;
+    --cc-carbs: #FDBC6F;
+    --cc-fat: #B699EB;
+    --cc-other: #758D7F;
+    --cc-warn: #FC8E72;
+    --cc-warn-text: #FC8E72;
+    --cc-warn-tail: rgba(252, 142, 114, 0.25);
+    --cc-card-shadow: none;
+    --cc-dock: rgba(28, 53, 44, 0.82);
+    --cc-dock-shadow: rgba(0, 0, 0, 0.50);
+    --cc-scrim: rgba(0, 10, 6, 0.60);
+    --cc-photo-placeholder: #132F25;
+    --cc-widget-surface: #112921;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --cc-bg: #081E17;
+  --cc-band: #081E17;
+  --cc-surface: #112921;
+  --cc-raised: #1C352C;
+  --cc-ink: #ECF7EE;
+  --cc-ink2: #ACC5B5;
+  --cc-ink3: #7A9385;
+  --cc-separator: rgba(236, 247, 238, 0.08);
+  --cc-track: rgba(236, 247, 238, 0.10);
+  --cc-range: rgba(236, 247, 238, 0.16);
+  --cc-accent: #C3F556;
+  --cc-focus: #C3F556;
+  --cc-focus-glow: rgba(195, 245, 86, 0.14);
+  --cc-primary: #C3F556;
+  --cc-on-primary: #081E17;
+  --cc-protein: #70CCEE;
+  --cc-carbs: #FDBC6F;
+  --cc-fat: #B699EB;
+  --cc-other: #758D7F;
+  --cc-warn: #FC8E72;
+  --cc-warn-text: #FC8E72;
+  --cc-warn-tail: rgba(252, 142, 114, 0.25);
+  --cc-card-shadow: none;
+  --cc-dock: rgba(28, 53, 44, 0.82);
+  --cc-dock-shadow: rgba(0, 0, 0, 0.50);
+  --cc-scrim: rgba(0, 10, 6, 0.60);
+  --cc-photo-placeholder: #132F25;
+  --cc-widget-surface: #112921;
+}
+
+/* Base: sage or pine page, never white or black. */
+html { background: var(--cc-bg); color: var(--cc-ink); font-family: var(--cc-font-sans); -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--cc-bg); }
+.cc-num { font-variant-numeric: tabular-nums; }
+
+/* The glass dock. Contents always use the pine set (lime primary, pine-raised secondary). */
+.cc-dock {
+  border-radius: var(--cc-radius-dock);
+  padding: 6px;
+  background: var(--cc-dock);
+  -webkit-backdrop-filter: blur(var(--cc-dock-blur)) saturate(var(--cc-dock-saturate));
+  backdrop-filter: blur(var(--cc-dock-blur)) saturate(var(--cc-dock-saturate));
+  box-shadow: var(--cc-dock-hairline), 0 12px 30px var(--cc-dock-shadow);
+  color: var(--cc-pine-mint);
+}

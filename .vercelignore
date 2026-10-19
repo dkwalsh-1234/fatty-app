@@ -1,0 +1,15 @@
+# Only what the web build needs goes up to Vercel. Leading slashes: top level only.
+/node_modules
+/.next
+/.env*
+!/.env.example
+/android
+/tests
+/supabase
+/data
+/docs
+/*.md
+/vitest.config.mts
+/tsconfig.tsbuildinfo
+/next-env.d.ts
+/.vercel

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=412">
+<title>Meal confirm, light</title>
+<style>
+@font-face { font-family: Geist; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+html, body { margin: 0; background: #555; }
+body { width: 412px; }
+</style>
+</head>
+<body>
+
+
+<div style="width: 412px; height: 915px; position: relative; overflow: hidden; background: #E8F0E4; color: #0B2D22; font-family: Geist, system-ui, sans-serif">
+
+  <header style="height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px">
+    <button aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; padding: 0; color: inherit"><span style="width: 36px; height: 36px; border-radius: 18px; background: #DFE8DB; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg></span></button>
+    <span style="font-size: 16px; font-weight: 600">Check your meal</span>
+    <span style="width: 44px"></span>
+  </header>
+
+  <div style="display: flex; flex-direction: column; gap: 12px; padding: 0 16px">
+    <div role="img" aria-label="Meal photo with your hint" style="position: relative; height: 176px; border-radius: 28px; background: #CFDDCB; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #8AA294">
+      <svg width="104" height="104" viewBox="0 0 60 60" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1"><circle cx="30" cy="30" r="25"></circle><circle cx="30" cy="30" r="17"></circle><path d="M20 28c4-5 10-6 15-3M24 36c5 2 10 1 14-3"></path></svg>
+      <div style="position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; height: 46px; border-radius: 23px; padding: 0 4px 0 18px; background: rgba(13,47,35,0.78); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 0 0 1px rgba(236,247,238,0.10); color: #ECF7EE">
+        <span style="flex: 1; font-size: 15px">“chicken stir-fry, 1 tbsp oil”</span>
+        <button aria-label="Edit hint by voice" style="width: 38px; height: 38px; border: 0; border-radius: 19px; background: #1C352C; color: #C3F556; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></button>
+      </div>
+    </div>
+
+    <section aria-label="Items found" style="background: #FBFBF2; border-radius: 26px; padding: 4px 6px 6px 20px; box-shadow: 0 1px 2px rgba(11,45,34,0.06)">
+      <div style="display: flex; align-items: center; height: 40px; padding-right: 14px"><span style="flex: 1; font-size: 17px; font-weight: 600">Found</span><span style="font-size: 13px; color: #496155">3 items</span></div>
+      
+        <div style="display: flex; align-items: center; gap: 6px; height: 56px; border-top: 1px solid rgba(11,45,34,0.08)">
+          <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Chicken breast, cooked</span>
+          <button aria-label="Chicken breast, cooked, 140 g. Change amount" style="height: 34px; padding: 0 14px; border: 0; border-radius: 17px; background: #DFE8DB; color: inherit; font: inherit; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums">140 g</button>
+          <button aria-label="Swap Chicken breast, cooked" style="width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #2E6720; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L4 7l3 3M4 7h12M17 20l3-3-3-3M20 17H8"></path></svg></button>
+          <button aria-label="Remove Chicken breast, cooked" style="width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #496155; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path></svg></button>
+        </div>
+      
+        <div style="display: flex; align-items: center; gap: 6px; height: 56px; border-top: 1px solid rgba(11,45,34,0.08)">
+          <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">White rice, cooked</span>
+          <button aria-label="White rice, cooked, 180 g. Change amount" style="height: 34px; padding: 0 14px; border: 0; border-radius: 17px; background: #DFE8DB; color: inherit; font: inherit; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums">180 g</button>
+          <button aria-label="Swap White rice, cooked" style="width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #2E6720; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L4 7l3 3M4 7h12M17 20l3-3-3-3M20 17H8"></path></svg></button>
+          <button aria-label="Remove White rice, cooked" style="width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #496155; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path></svg></button>
+        </div>
+      
+        <div style="display: flex; align-items: center; gap: 6px; height: 56px; border-top: 1px solid rgba(11,45,34,0.08)">
+          <span style="flex: 1; min-width: 0; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Mixed vegetables</span>
+          <button aria-label="Mixed vegetables, 120 g. Change amount" style="height: 34px; padding: 0 14px; border: 0; border-radius: 17px; background: #DFE8DB; color: inherit; font: inherit; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums">120 g</button>
+          <button aria-label="Swap Mixed vegetables" style="width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #2E6720; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L4 7l3 3M4 7h12M17 20l3-3-3-3M20 17H8"></path></svg></button>
+          <button aria-label="Remove Mixed vegetables" style="width: 40px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #496155; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path></svg></button>
+        </div>
+      
+    </section>
+
+    <label style="height: 62px; box-sizing: border-box; border-radius: 26px; border: 1.5px dashed #9DB1A3; display: flex; align-items: center; gap: 12px; padding: 0 20px">
+      <input type="checkbox" style="appearance: none; -webkit-appearance: none; flex: none; width: 22px; height: 22px; margin: 0; box-sizing: border-box; border-radius: 7px; border: 2px solid #496155; background: transparent">
+      <span style="flex: 1; display: flex; flex-direction: column">
+        <span style="font-size: 15px; font-weight: 500">Olive oil · 1 tsp · 5 g</span>
+        <span style="font-size: 12px; color: #496155">Suggested hidden fat · not added</span>
+      </span>
+    </label>
+
+    <section aria-label="Total" style="background: #FBFBF2; border-radius: 26px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 1px 2px rgba(11,45,34,0.06)">
+      <div style="display: flex; align-items: baseline; justify-content: space-between">
+        <span style="font-size: 38px; font-weight: 300; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums">503 <span style="font-size: 14px; font-weight: 400; letter-spacing: 0; color: #496155">kcal</span></span>
+        <span style="font-size: 13px; color: #496155">440 g · 3 entries</span>
+      </div>
+      <div style="display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px">
+        
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 4px; background: #06658E"></span>Protein<span style="font-weight: 600; font-variant-numeric: tabular-nums">50.7 g</span></span>
+        
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 4px; background: #CE7C22"></span>Carbs<span style="font-weight: 600; font-variant-numeric: tabular-nums">55.8 g</span></span>
+        
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 4px; background: #8561BD"></span>Fat<span style="font-weight: 600; font-variant-numeric: tabular-nums">5.9 g</span></span>
+        
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; border-radius: 4px; background: #9DB1A3"></span>Fibre<span style="font-weight: 600; font-variant-numeric: tabular-nums">3.7 g</span></span>
+        
+      </div>
+      <span style="font-size: 12px; color: #496155">Saturated 1.6 g · trans 0.1 g · sugars 3.8 g · sodium 135 mg (0.3 g salt)</span>
+    </section>
+
+    <button style="align-self: center; height: 36px; display: flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0 8px; color: #2E6720; font: inherit; font-size: 14px; font-weight: 600">Dinner · 18:45<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5 5 5-5"></path></svg></button>
+  </div>
+
+  <div style="position: absolute; left: 16px; right: 16px; bottom: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 6px; border-radius: 34px; background: rgba(13,47,35,0.88); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); box-shadow: 0 0 0 1px rgba(236,247,238,0.10), 0 12px 30px rgba(11,45,34,0.28)">
+    <button style="height: 52px; border: 0; border-radius: 26px; background: #1C352C; color: #ECF7EE; font: inherit; font-size: 16px; font-weight: 600">Save as meal</button>
+    <button style="height: 52px; border: 0; border-radius: 26px; background: #C3F556; color: #081E17; font: inherit; font-size: 16px; font-weight: 600">Save</button>
+  </div>
+</div>
+
+</body>
+</html>

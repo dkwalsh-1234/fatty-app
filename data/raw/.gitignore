@@ -1,0 +1,6 @@
+# FSANZ downloads stay on Daniel's machine: they are large, and FSANZ licenses them on download.
+# Ignore everything here except this file, the README and the placeholder that keeps the folder.
+*
+!.gitignore
+!README.md
+!.gitkeep

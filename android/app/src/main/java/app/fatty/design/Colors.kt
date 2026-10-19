@@ -1,0 +1,91 @@
+// Generated from tokens.json by tokens/build.mjs. Do not edit by hand.
+// Package set to app.fatty.design for the wrapper; otherwise as generated.
+package app.fatty.design
+
+import androidx.compose.ui.graphics.Color
+
+/** Fixed colours for anything on pine: ring, widget, dock. Same in light and dark. */
+object PineColors {
+    val Pine = Color(0xFF081E17)
+    val Surface = Color(0xFF112921)
+    val Raised = Color(0xFF1C352C)
+    val Band = Color(0xFF0D2F23)
+    val Mint = Color(0xFFECF7EE)
+    val Mint2 = Color(0xFFACC5B5)
+    val Mint3 = Color(0xFF7A9385)
+    val Lime = Color(0xFFC3F556)
+    val OnLime = Color(0xFF081E17)
+    val Protein = Color(0xFF70CCEE)
+    val Carbs = Color(0xFFFDBC6F)
+    val Fat = Color(0xFFB699EB)
+    val Other = Color(0xFF758D7F)
+    val Warn = Color(0xFFFC8E72)
+    val Track = Color(0x1AECF7EE)
+    val Track2 = Color(0x2EECF7EE)
+    val Hairline = Color(0x1AECF7EE)
+    val ActivityRail = Color(0xE6C3F556)
+    val SegmentShadow = Color(0x9900140C)
+    val LapShadow = Color(0xD900140C)
+}
+
+/** Light theme content colours. */
+object LightColors {
+    val Bg = Color(0xFFE8F0E4)
+    val Band = Color(0xFF0D2F23)
+    val Surface = Color(0xFFFBFBF2)
+    val Raised = Color(0xFFDFE8DB)
+    val Ink = Color(0xFF0B2D22)
+    val Ink2 = Color(0xFF496155)
+    val Ink3 = Color(0xFF9DB1A3)
+    val Separator = Color(0x140B2D22)
+    val Track = Color(0x140B2D22)
+    val Range = Color(0x210B2D22)
+    val Accent = Color(0xFF2E6720)
+    val Focus = Color(0xFF2E6720)
+    val FocusGlow = Color(0x242E6720)
+    val Primary = Color(0xFF0B2D22)
+    val OnPrimary = Color(0xFFC3F556)
+    val Protein = Color(0xFF06658E)
+    val Carbs = Color(0xFFCE7C22)
+    val Fat = Color(0xFF8561BD)
+    val Other = Color(0xFF9DB1A3)
+    val Warn = Color(0xFFCD5537)
+    val WarnText = Color(0xFFAE4024)
+    val WarnTail = Color(0x38CD5537)
+    val Dock = Color(0xE00D2F23)
+    val DockShadow = Color(0x470B2D22)
+    val Scrim = Color(0x6B081E17)
+    val PhotoPlaceholder = Color(0xFFCFDDCB)
+    val WidgetSurface = Color(0xFF0D2F23)
+}
+
+/** Dark theme content colours. */
+object DarkColors {
+    val Bg = Color(0xFF081E17)
+    val Band = Color(0xFF081E17)
+    val Surface = Color(0xFF112921)
+    val Raised = Color(0xFF1C352C)
+    val Ink = Color(0xFFECF7EE)
+    val Ink2 = Color(0xFFACC5B5)
+    val Ink3 = Color(0xFF7A9385)
+    val Separator = Color(0x14ECF7EE)
+    val Track = Color(0x1AECF7EE)
+    val Range = Color(0x29ECF7EE)
+    val Accent = Color(0xFFC3F556)
+    val Focus = Color(0xFFC3F556)
+    val FocusGlow = Color(0x24C3F556)
+    val Primary = Color(0xFFC3F556)
+    val OnPrimary = Color(0xFF081E17)
+    val Protein = Color(0xFF70CCEE)
+    val Carbs = Color(0xFFFDBC6F)
+    val Fat = Color(0xFFB699EB)
+    val Other = Color(0xFF758D7F)
+    val Warn = Color(0xFFFC8E72)
+    val WarnText = Color(0xFFFC8E72)
+    val WarnTail = Color(0x40FC8E72)
+    val Dock = Color(0xD11C352C)
+    val DockShadow = Color(0x80000000)
+    val Scrim = Color(0x99000A06)
+    val PhotoPlaceholder = Color(0xFF132F25)
+    val WidgetSurface = Color(0xFF112921)
+}

@@ -1,0 +1,4 @@
+# Copy to fatty.properties (git-ignored) and fill in, then build.
+# The web app's address, no trailing slash, e.g. https://fatty.example.app
+# Without it the app shows a short "not set up" message instead of the web app.
+FATTY_BASE_URL=

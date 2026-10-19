@@ -1,0 +1,379 @@
+// Pure logic against the brief's acceptance checks.
+import { describe, expect, it } from 'vitest';
+import { ringGeometry, splitEnergy } from '@/design/components/ring';
+import { targetState } from '@/design/components/TargetBar';
+import { buildChips, cleanTyped, mealPer100, measureChipLabel, parseTyped } from '@/lib/amount';
+import { barcodeVariants, hasValidCheckDigit, normalizeBarcode, upcEToUpcA } from '@/lib/barcode';
+import { addDays, ageOn, dayBounds, localDate, mealForTime, zonedToUtc } from '@/lib/dates';
+import { buildDay, pickBurn } from '@/lib/day';
+import { saltText } from '@/lib/format';
+import { emptyPer100, scale, sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
+import { parseSearch, parseText } from '@/lib/parse';
+import { mapOffProduct } from '@/lib/sources/off';
+import { checkGoal, computeTarget, restingKcal, roundTarget, targetsConflict } from '@/lib/target';
+import type { BurnRow, Food, LogEntry, Profile } from '@/lib/types';
+import { widgetSummary } from '@/lib/widget';
+
+const p100 = (o: Partial<Per100>): Per100 => ({ ...emptyPer100(), ...o });
+
+describe('day totals', () => {
+  it('match a manual calculation exactly (1 kJ, 0.1 g, 1 mg)', () => {
+    const oats = p100({ energy_kj: 1580, protein_g: 12.1, fat_g: 8.4, sat_fat_g: 1.5, trans_fat_g: 0, carbs_g: 56.3, sugars_g: 1.2, fibre_g: 10.2, sodium_mg: 6 });
+    const milk = p100({ energy_kj: 274, protein_g: 3.4, fat_g: 3.6, sat_fat_g: 2.3, trans_fat_g: 0.1, carbs_g: 4.8, sugars_g: 4.8, fibre_g: 0, sodium_mg: 41 });
+    const banana = p100({ energy_kj: 380, protein_g: 1.4, fat_g: 0.3, sat_fat_g: 0.1, trans_fat_g: 0, carbs_g: 20.1, sugars_g: 17.9, fibre_g: 2.4, sodium_mg: 1 });
+    const t = sumEntries([
+      { per100: oats, grams: 45 },
+      { per100: milk, grams: 250 },
+      { per100: banana, grams: 120 },
+    ]);
+    // By hand: 45 g oats = 711 kJ; 250 g milk = 685 kJ; 120 g banana = 456 kJ.
+    expect(Math.round(t.values.energy_kj!)).toBe(711 + 685 + 456);
+    expect(Math.round(t.values.protein_g! * 10) / 10).toBe(Math.round((5.445 + 8.5 + 1.68) * 10) / 10);
+    expect(Math.round(t.values.sodium_mg!)).toBe(Math.round(2.7 + 102.5 + 1.2));
+    expect(t.missing.sat_fat_g).toBe(0);
+  });
+
+  it('never fills a missing value with zero', () => {
+    const muesli = p100({ energy_kj: 1620, sat_fat_g: null, protein_g: 10.2 });
+    const t = sumEntries([
+      { per100: muesli, grams: 60 },
+      { per100: p100({ energy_kj: 100, sat_fat_g: 1 }), grams: 100 },
+    ]);
+    expect(t.values.sat_fat_g).toBe(1);
+    expect(t.missing.sat_fat_g).toBe(1);
+    expect(scale(muesli, 60).sat_fat_g).toBeNull();
+  });
+
+  it('shows salt beside sodium', () => {
+    expect(saltText(1240)).toBe('3.1 g salt');
+    expect(saltText(9)).toBe('0.02 g salt');
+  });
+});
+
+describe('the ring', () => {
+  it('splits energy so the four segments add up exactly to energy logged', () => {
+    const s = splitEnergy(2000, { protein: 20, carbs: 50, fat: 10 });
+    expect(s.protein + s.carbs + s.fat + s.other).toBeCloseTo(2000, 9);
+    expect(s.other).toBeCloseTo(2000 - 20 * 17 - 50 * 17 - 10 * 37, 9);
+    // Label rounding: macros explain more than logged, so they're scaled down.
+    const r = splitEnergy(1000, { protein: 20, carbs: 40, fat: 10 });
+    expect(r.other).toBe(0);
+    expect(r.protein + r.carbs + r.fat).toBeCloseTo(1000, 9);
+  });
+
+  it('draws a second lap when over target', () => {
+    const g = ringGeometry({ size: 280, stroke: 26, rail: 5, target: 2180, base: 1770, eaten: { protein: 414, carbs: 947, fat: 1003, other: 46 }, activity: 'measured' });
+    expect(g.over).toBe(true);
+    expect(g.lap).not.toBeNull();
+    expect(g.remaining).toBeCloseTo(-230, 6);
+    expect(g.activity?.dashed).toBe(false);
+  });
+});
+
+describe('energy target', () => {
+  const base = { today: '2026-10-19', birthDate: '1986-05-01', sex: 'male' as const, heightCm: 180, activityLevel: 'some' as const, currentKg: 86.6 };
+
+  it('matches a hand calculation with no burn data', () => {
+    // Resting: 10 × 86.6 + 6.25 × 180 − 5 × 40 + 5 = 1,796. Activity: × 0.375 = 673.5.
+    // Adjustment: (84 − 86.6) × 7,700 ÷ 62 days = −322.9. Target 2,146.6 → 2,150.
+    const t = computeTarget({ ...base, goal: { targetKg: 84, targetDate: '2026-12-20' } });
+    expect(t.resting).toBeCloseTo(1796, 6);
+    expect(t.activitySource).toBe('estimated');
+    expect(t.activity).toBeCloseTo(673.5, 6);
+    expect(t.adjustment).toBeCloseTo((-2.6 * 7700) / 62, 6);
+    expect(t.target).toBe(2150);
+  });
+
+  it('rises by measured active burn, shown as its own part', () => {
+    const t0 = computeTarget({ ...base, goal: null, burnToday: { date: '2026-10-19', total_kcal: null, active_kcal: 0 } });
+    const t = computeTarget({ ...base, goal: null, burnToday: { date: '2026-10-19', total_kcal: 2206, active_kcal: 410 } });
+    expect(t.activitySource).toBe('measured');
+    expect(t.target - t0.target).toBe(410);
+    expect(t.target - t.base).toBeCloseTo(410, 6);
+  });
+
+  it('works out activity as total minus resting when there is only a total', () => {
+    const t = computeTarget({ ...base, goal: null, burnToday: { date: '2026-10-19', total_kcal: 2296, active_kcal: null } });
+    expect(t.activity).toBeCloseTo(2296 - 1796, 6);
+  });
+
+  it('never adds two apps together', () => {
+    const rows: BurnRow[] = [
+      { date: '2026-10-19', source_app: 'garmin', total_kcal: 2600, active_kcal: 410 },
+      { date: '2026-10-19', source_app: 'fit', total_kcal: 2300, active_kcal: 300 },
+    ];
+    expect(pickBurn(rows, '2026-10-19', null)?.active_kcal).toBe(410);
+    expect(pickBurn(rows, '2026-10-19', 'fit')?.active_kcal).toBe(300);
+  });
+
+  it('uses the 7-day average in stable mode', () => {
+    const week = Array.from({ length: 7 }, (_, i) => ({ date: addDays('2026-10-19', -i - 1), total_kcal: 2500 + i * 10, active_kcal: null }));
+    const t = computeTarget({ ...base, goal: null, burnLast7: week, stableMode: true, burnToday: { date: '2026-10-19', total_kcal: 3000, active_kcal: 900 } });
+    expect(t.activitySource).toBe('stable');
+    expect(t.resting + t.activity).toBeCloseTo(2530, 6);
+  });
+
+  it('lets anyone type their own target', () => {
+    const t = computeTarget({ ...base, goal: { targetKg: 70, targetDate: '2026-11-01' }, overrideKcal: 1234 });
+    expect(t.target).toBe(1230);
+    expect(t.activitySource).toBe('override');
+  });
+
+  it('rounds to the nearest 10 and computes resting energy for women', () => {
+    expect(roundTarget(2146.6)).toBe(2150);
+    expect(restingKcal({ weightKg: 60, heightCm: 165, age: 30, sex: 'female' })).toBe(600 + 1031.25 - 150 - 161);
+  });
+});
+
+describe('guardrails', () => {
+  const g = { today: '2026-10-19', currentKg: 86.6, sex: 'male' as const, maintenanceKcal: 2470 };
+
+  it('warns when a goal is faster than 1% a week, and Continue anyway clears it', () => {
+    const c = checkGoal({ ...g, targetKg: 80, targetDate: '2026-11-19', targetKcal: 800 });
+    expect(c.refusal).toBeNull();
+    expect(c.warnings.map((w) => w.key)).toEqual(['rate', 'floor']);
+    expect(c.warnings[0].body).toMatch(/At 1% a week you'd get there by/);
+    const after = checkGoal({ ...g, targetKg: 80, targetDate: '2026-11-19', targetKcal: 800, dismissed: ['rate', 'floor'] });
+    expect(after.warnings).toEqual([]);
+  });
+
+  it('warns below the floor (1,200 women, 1,500 men), and the floor is editable', () => {
+    expect(checkGoal({ ...g, targetKg: 85, targetDate: '2027-01-30', targetKcal: 1450 }).warnings.map((w) => w.key)).toEqual(['floor']);
+    expect(checkGoal({ ...g, sex: 'female', targetKg: 85, targetDate: '2027-01-30', targetKcal: 1450 }).warnings).toEqual([]);
+    expect(checkGoal({ ...g, targetKg: 85, targetDate: '2027-01-30', targetKcal: 1450, floorKcal: 1400 }).warnings).toEqual([]);
+  });
+
+  it('refuses a date in the past, showing the earliest reachable date', () => {
+    const c = checkGoal({ ...g, targetKg: 84, targetDate: '2026-10-01', targetKcal: 2000 });
+    expect(c.refusal?.reason).toBe('date_passed');
+    // 2.6 kg × 7,700 ÷ 1,000 a day = 20.02 → 21 days.
+    expect(c.refusal?.earliestDate).toBe('2026-11-09');
+  });
+
+  it('refuses a goal that would need a negative target', () => {
+    const c = checkGoal({ ...g, targetKg: 80.6, targetDate: '2026-10-31', targetKcal: -1000 });
+    expect(c.refusal?.reason).toBe('impossible');
+  });
+
+  it("never warns about a person's own number", () => {
+    expect(checkGoal({ ...g, targetKg: 80, targetDate: '2026-11-19', targetKcal: 800, overrideKcal: 900 }).warnings).toEqual([]);
+  });
+
+  it('flags nutrient minimums that alone exceed the energy target', () => {
+    expect(targetsConflict([{ nutrient: 'protein', direction: 'min', low: 400, high: null }], 1500)).toMatch(/more than today's target/);
+    expect(targetsConflict([{ nutrient: 'protein', direction: 'min', low: 150, high: null }], 2000)).toBeNull();
+  });
+});
+
+describe('nutrient target bars', () => {
+  it('ticks protein at 150 g', () => {
+    expect(targetState({ value: 149.9, direction: 'atLeast', max: 150, unit: 'g' }).reached).toBe(false);
+    const s = targetState({ value: 150, direction: 'atLeast', max: 150, unit: 'g' });
+    expect(s.reached).toBe(true);
+    expect(s.caption).toBe('Reached');
+  });
+
+  it('turns sat fat the soft warning tone at 6.3 g and the warning tone above 7 g', () => {
+    expect(targetState({ value: 6.2, direction: 'noMoreThan', max: 7, unit: 'g' }).tone).toBe('neutral');
+    expect(targetState({ value: 6.3, direction: 'noMoreThan', max: 7, unit: 'g' }).tone).toBe('near');
+    expect(targetState({ value: 7, direction: 'noMoreThan', max: 7, unit: 'g' }).tone).toBe('near');
+    const over = targetState({ value: 7.1, direction: 'noMoreThan', max: 7, unit: 'g' });
+    expect(over.tone).toBe('over');
+    expect(over.caption).toBe('▲ 0.1 g over');
+  });
+
+  it('marks the band for a range', () => {
+    const s = targetState({ value: 140, direction: 'range', min: 150, max: 250, unit: 'g' });
+    expect(s.caption).toBe('10 g below the range');
+    expect(s.band).toEqual({ left: 0.5, width: 100 / 300 });
+  });
+});
+
+describe('local days', () => {
+  it('keeps 11:30 pm on that day in Sydney', () => {
+    const at = zonedToUtc('2026-10-19', '23:30', 'Australia/Sydney');
+    expect(at.toISOString()).toBe('2026-10-19T12:30:00.000Z');
+    expect(localDate('Australia/Sydney', at)).toBe('2026-10-19');
+    const { start, end } = dayBounds('Australia/Sydney', '2026-10-19');
+    expect(at >= start && at < end).toBe(true);
+  });
+
+  it('handles the daylight-saving change (4 Oct 2026 is a 23-hour day in Sydney)', () => {
+    const { start, end } = dayBounds('Australia/Sydney', '2026-10-04');
+    expect((end.getTime() - start.getTime()) / 3_600_000).toBe(23);
+  });
+
+  it('picks the meal from the time of day', () => {
+    expect(mealForTime('07:30')).toBe('breakfast');
+    expect(mealForTime('12:40')).toBe('lunch');
+    expect(mealForTime('15:00')).toBe('snack');
+    expect(mealForTime('18:45')).toBe('dinner');
+    expect(mealForTime('23:30')).toBe('snack');
+    expect(mealForTime('02:00')).toBe('snack');
+  });
+
+  it('keeps age current', () => {
+    expect(ageOn('1986-10-20', '2026-10-19')).toBe(39);
+    expect(ageOn('1986-10-19', '2026-10-19')).toBe(40);
+  });
+});
+
+describe('barcodes', () => {
+  it('treats a 12-digit UPC-A and its 13-digit EAN form as the same product', () => {
+    expect(normalizeBarcode('036000291452')).toBe('0036000291452');
+    expect(normalizeBarcode('0036000291452')).toBe('0036000291452');
+    expect(normalizeBarcode('00036000291452')).toBe('0036000291452');
+    expect(barcodeVariants('0036000291452')).toEqual(['0036000291452', '036000291452']);
+  });
+
+  it('expands UPC-E and keeps EAN-8', () => {
+    expect(upcEToUpcA('04252614')).toBe('042100005264');
+    expect(normalizeBarcode('04252614', 'upc_e')).toBe('0042100005264');
+    expect(normalizeBarcode('96385074', 'ean_8')).toBe('96385074');
+    expect(normalizeBarcode('abc')).toBeNull();
+  });
+
+  it('checks GS1 check digits', () => {
+    expect(hasValidCheckDigit('4006381333931')).toBe(true);
+    expect(hasValidCheckDigit('4006381333932')).toBe(false);
+  });
+});
+
+describe('typed amounts', () => {
+  it('reads "45 salad", "salad 45g" and "250ml milk"', () => {
+    expect(parseSearch('45 salad')).toEqual({ text: 'salad', amount: 45, unit: 'g', count: null });
+    expect(parseSearch('salad 45g')).toEqual({ text: 'salad', amount: 45, unit: 'g', count: null });
+    expect(parseSearch('250ml milk')).toEqual({ text: 'milk', amount: 250, unit: 'ml', count: null });
+    expect(parseSearch('1.5 kg rice')).toEqual({ text: 'rice', amount: 1500, unit: 'g', count: null });
+    expect(parseSearch('banana')).toEqual({ text: 'banana', amount: null, unit: null, count: null });
+  });
+
+  it('reads small bare numbers as counts', () => {
+    expect(parseSearch('2 eggs')).toEqual({ text: 'eggs', amount: null, unit: null, count: 2 });
+    expect(parseSearch('a banana').count).toBe(1);
+  });
+
+  it('splits typed meals', () => {
+    const items = parseText('45 g salad, 2 eggs, flat white and 30 g almonds');
+    expect(items.map((i) => [i.text, i.amount, i.count])).toEqual([
+      ['salad', 45, null],
+      ['eggs', null, 2],
+      ['flat white', null, null],
+      ['almonds', 30, null],
+    ]);
+  });
+
+  it('cleans what is typed in the amount field', () => {
+    expect(cleanTyped('4,5')).toBe('4.5');
+    expect(cleanTyped('1.2.3g')).toBe('1.23');
+    expect(parseTyped('45')).toBe(45);
+    expect(parseTyped('')).toBeNull();
+    expect(parseTyped('0')).toBeNull();
+  });
+});
+
+describe('amount sheet chips', () => {
+  const food = { source: 'off' as const, serving_g: 45, pack_g: 750, total_weight_g: null, serves: null };
+  const m = (id: string, label: string, grams: number, rank: number, owner: string | null = null) => ({ id, food_id: 'f', label, grams, source: 'ausnut' as const, owner_id: owner, rank });
+
+  it('orders last amount, serve, pack, then measures; at most five; no repeats', () => {
+    const chips = buildChips(food, [m('a', '1 cup', 30, 0), m('b', '1 tbsp', 45, 1), m('c', '1 bowl', 60, 2), m('d', '1 handful', 20, 3), m('e', 'mine', 320, 0, 'u')], {
+      food_id: 'f', use_count: 3, last_used_at: null, last_grams: 45, last_unit: 'g', last_amount: 45,
+    });
+    expect(chips.map((c) => c.label)).toEqual(['Last · 45 g', 'Whole pack · 750 g', 'mine · 320 g', '1 cup · 30 g', '1 bowl · 60 g']);
+  });
+
+  it('adds another measure on a second tap', () => {
+    expect(measureChipLabel({ key: 'm', label: '1 cup · 40 g', grams: 40, kind: 'measure' }, 2)).toBe('2 × 1 cup · 80 g');
+  });
+
+  it('offers one serve, half and whole for a meal', () => {
+    const chips = buildChips({ source: 'meal', serving_g: null, pack_g: null, total_weight_g: 1200, serves: 4 }, [], null);
+    expect(chips.map((c) => c.label)).toEqual(['1 serve · 300 g', 'Half · 600 g', 'Whole · 1,200 g']);
+  });
+
+  it('works out a meal per 100 g, and 300 g of 1,200 g is a quarter', () => {
+    const a = p100({ energy_kj: 1500, protein_g: 12, sodium_mg: 5 });
+    const b = p100({ energy_kj: 900, protein_g: 20, sodium_mg: 70 });
+    const { per100, totalWeight } = mealPer100(
+      [
+        { per100: a, grams: 500 },
+        { per100: b, grams: 500 },
+      ],
+      { cookedWeight: 1200, originalRawSum: 1000 },
+    );
+    expect(totalWeight).toBe(1200);
+    const quarter = scale(per100, 300);
+    expect(quarter.energy_kj).toBeCloseTo((1500 * 5 + 900 * 5) / 4, 9);
+    // Dropping an ingredient scales the cooked weight with the raw weight left.
+    expect(mealPer100([{ per100: a, grams: 500 }], { cookedWeight: 1200, originalRawSum: 1000 }).totalWeight).toBe(600);
+  });
+});
+
+describe('Open Food Facts mapping', () => {
+  it('maps the nine fields, sodium from grams to mg', () => {
+    const f = mapOffProduct('9300633603857', {
+      product_name: 'Muesli',
+      brands: 'Brand, Other',
+      nutriments: { 'energy-kj_100g': 1620, proteins_100g: 10.2, fat_100g: 8.9, carbohydrates_100g: 58.4, sugars_100g: 17.6, fiber_100g: 9.1, sodium_100g: 0.015 },
+      serving_quantity: 45,
+      product_quantity: 750,
+    })!;
+    expect(f.energy_kj).toBe(1620);
+    expect(f.sodium_mg).toBe(15);
+    expect(f.sat_fat_g).toBeNull();
+    expect(f.brand).toBe('Brand');
+    expect(f.serving_g).toBe(45);
+  });
+
+  it('falls back to kcal × 4.184, and treats no energy as a miss', () => {
+    expect(mapOffProduct('1', { nutriments: { 'energy-kcal_100g': 100 } })!.energy_kj).toBe(418.4);
+    expect(mapOffProduct('1', { nutriments: { proteins_100g: 5 } })).toBeNull();
+  });
+});
+
+describe('Today and the widget', () => {
+  const profile: Profile = {
+    user_id: 'u', display_name: 'Daniel', is_admin: true, birth_date: '1986-05-01', sex: 'male', height_cm: 180, activity_level: 'some',
+    energy_target_override_kcal: null, warn_rate_pct_per_week: 1, warn_floor_kcal: null, time_zone: 'Australia/Sydney', energy_unit: 'kcal',
+    meal_boundaries: null, widget_nutrients: ['protein', 'sat_fat', 'sodium'], stable_mode: false, burn_source: null, onboarded_at: '2026-10-01',
+  };
+  const entry = (name: string, grams: number, per: Partial<Per100>, meal: LogEntry['meal'] = 'lunch'): LogEntry => ({
+    id: name, owner_id: 'u', eaten_at: '2026-10-19T02:00:00Z', meal, food_id: null, food_name_snapshot: name, source_snapshot: null, grams, entered_amount: grams,
+    entered_unit: 'g', per100_snapshot: p100(per), ingredient_adjustments: null, is_estimate: false, method: 'search', meal_photo_id: null, hc_synced_at: null,
+    created_at: '', updated_at: '',
+  });
+
+  it('builds the day: incomplete sat fat, rows, groups and a widget summary', () => {
+    const day = buildDay({
+      date: '2026-10-19',
+      entries: [entry('Muesli', 60, { energy_kj: 1620, protein_g: 10.2, sat_fat_g: null, sodium_mg: 15 }, 'breakfast'), entry('Wrap', 280, { energy_kj: 1158, protein_g: 12, sat_fat_g: 2, sodium_mg: 400 })],
+      profile,
+      goal: { id: 'g', start_weight_kg: 88, start_date: '2026-08-31', target_weight_kg: 84, target_date: '2026-12-20', active: true, warnings_dismissed: [], created_at: '' },
+      weighIns: [{ id: 'w', measured_at: '2026-10-19T00:00:00Z', weight_kg: 86.6, source: 'manual' }],
+      burn: [{ date: '2026-10-19', source_app: 'garmin', total_kcal: 2206, active_kcal: 410 }],
+      targets: [
+        { nutrient: 'protein', direction: 'min', low: 150, high: null },
+        { nutrient: 'sat_fat', direction: 'max', low: null, high: 7 },
+      ],
+    });
+    const sat = day.targetRows.find((r) => r.info.id === 'sat_fat')!;
+    expect(sat.incomplete).toBe(1);
+    expect(sat.value).toBeCloseTo(5.6, 9);
+    expect(day.ring?.activity).toBe('measured');
+    expect(day.ring!.target - day.ring!.base).toBeCloseTo(410, 6);
+    expect(day.eaten.protein + day.eaten.carbs + day.eaten.fat + day.eaten.other).toBeCloseTo(day.eatenTotal, 9);
+    expect(day.groups.map((g) => g.meal)).toEqual(['breakfast', 'lunch', 'snack', 'dinner']);
+    expect(day.otherNutrients[0].info.key).toBe('sodium_mg');
+    const w = widgetSummary(day, profile, 'https://fatty.test')!;
+    expect(w.nutrients.map((n) => n.name)).toEqual(['Protein', 'Saturated fat', 'Sodium']);
+    expect(w.nutrients[2].caption).toBe('2.8 g salt'); // 9 + 1,120 mg sodium
+    expect(w.date).toBe('2026-10-19');
+  });
+
+  it('parses database rows into Per100 with nulls kept', () => {
+    expect(toPer100({ energy_kj: '1620', sat_fat_g: null, protein_g: 0 } as unknown as Record<string, unknown>)).toMatchObject({ energy_kj: 1620, sat_fat_g: null, protein_g: 0 });
+    const f = { energy_kj: 100 } as Food;
+    expect(scale(f, 50).energy_kj).toBe(50);
+  });
+});

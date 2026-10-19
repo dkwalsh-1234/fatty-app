@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=412">
+<title>Widget, dark</title>
+<style>
+@font-face { font-family: Geist; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+html, body { margin: 0; background: #555; }
+body { width: 412px; }
+</style>
+</head>
+<body>
+
+
+<div style="width: 412px; height: 915px; position: relative; overflow: hidden; background: #06140F; color: #ECF7EE; font-family: Geist, system-ui, sans-serif">
+
+  <section aria-label="Calorie Counter widget" style="position: absolute; left: 16px; top: 96px; width: 380px; height: 220px; box-sizing: border-box; background: #112921; border-radius: 32px; padding: 14px 18px 14px 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 10px 28px rgba(0,0,0,0.45)">
+    <div style="display: flex; gap: 18px; align-items: center">
+      <div style="position: relative; width: 136px; height: 136px; flex: none">
+        <svg width="136" height="136" viewBox="0 0 136 136" aria-hidden="true">
+          <circle cx="68" cy="68" r="57.5" fill="none" stroke="rgba(236,247,238,0.10)" stroke-width="15"></circle>
+          <path d="M15.39 44.81 A57.5 57.5 0 0 1 66.50 10.52" fill="none" stroke="rgba(195,245,86,0.9)" stroke-width="3" stroke-linecap="round"></path>
+          <path d="M75.48 10.99 A57.5 57.5 0 1 1 21.70 102.10" fill="none" stroke="#758D7F" stroke-width="15" stroke-linecap="round" style="filter: drop-shadow(0 0 3px rgba(0,20,12,0.6))"></path>
+          <path d="M75.48 10.99 A57.5 57.5 0 1 1 26.16 107.44" fill="none" stroke="#B699EB" stroke-width="15" stroke-linecap="round" style="filter: drop-shadow(0 0 3px rgba(0,20,12,0.6))"></path>
+          <path d="M75.48 10.99 A57.5 57.5 0 0 1 86.12 122.57" fill="none" stroke="#FDBC6F" stroke-width="15" stroke-linecap="round" style="filter: drop-shadow(0 0 3px rgba(0,20,12,0.6))"></path>
+          <path d="M75.48 10.99 A57.5 57.5 0 0 1 121.19 46.15" fill="none" stroke="#70CCEE" stroke-width="15" stroke-linecap="round" style="filter: drop-shadow(0 0 3px rgba(0,20,12,0.6))"></path>
+        </svg>
+        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center">
+          <span style="font-size: 36px; font-weight: 300; letter-spacing: -0.05em; line-height: 1; font-variant-numeric: tabular-nums">720</span>
+          <span style="font-size: 10px; font-weight: 600; letter-spacing: 0.08em; color: #ACC5B5; padding-top: 3px">KCAL LEFT</span>
+        </div>
+      </div>
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+        
+          <div style="display: flex; flex-direction: column; gap: 1px">
+            <span style="font-size: 12px; color: #ACC5B5">Protein</span>
+            <span style="font-size: 20px; font-weight: 400; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: #ECF7EE">112<span style="font-size: 13px; color: #ACC5B5"> / 150 g</span></span>
+          </div>
+        
+          <div style="display: flex; flex-direction: column; gap: 1px">
+            <span style="font-size: 12px; color: #ACC5B5">Saturated fat · 0.6 g left</span>
+            <span style="font-size: 20px; font-weight: 400; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: #FC8E72">6.4<span style="font-size: 13px; color: #ACC5B5"> / 7 g</span></span>
+          </div>
+        
+          <div style="display: flex; flex-direction: column; gap: 1px">
+            <span style="font-size: 12px; color: #ACC5B5">Sodium · 3.1 g salt</span>
+            <span style="font-size: 20px; font-weight: 400; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: #ECF7EE">1,240<span style="font-size: 13px; color: #ACC5B5"> mg</span></span>
+          </div>
+        
+      </div>
+    </div>
+    <nav aria-label="Log food" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+      <button aria-label="Scan" style="height: 48px; border: 0; border-radius: 24px; background: #1C352C; color: #ECF7EE; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M8 9v6M11 9v6M14 9v6M17 9v6"></path></svg></button>
+      <button aria-label="Photo" style="height: 48px; border: 0; border-radius: 24px; background: #1C352C; color: #ECF7EE; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9a2 2 0 0 1 2-2h2l1.5-2h6l1.5 2h2a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path><circle cx="12" cy="13" r="3.5"></circle></svg></button>
+      <button aria-label="Search" style="height: 48px; border: 0; border-radius: 24px; background: #1C352C; color: #ECF7EE; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path></svg></button>
+      <button aria-label="Type" style="height: 48px; border: 0; border-radius: 24px; background: #1C352C; color: #ECF7EE; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"></rect><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14.5h8"></path></svg></button>
+    </nav>
+  </section>
+
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 36px; display: flex; justify-content: space-around; padding: 0 28px">
+    <div style="width: 56px; height: 56px; border-radius: 28px; background: #13261F"></div>
+    <div style="width: 56px; height: 56px; border-radius: 28px; background: #13261F"></div>
+    <div style="width: 56px; height: 56px; border-radius: 28px; background: #13261F"></div>
+    <div style="width: 56px; height: 56px; border-radius: 28px; background: #13261F"></div>
+  </div>
+</div>
+
+</body>
+</html>

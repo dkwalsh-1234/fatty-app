@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The ring's centre text (FattyWidget.centre). XML because Glance Text can't set the 300 and 600
+     weights, the caps tracking or tabular figures. Text, sizes and colours are set in code. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/ring_value"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFeatureSettings="tnum"
+        android:includeFontPadding="false"
+        android:letterSpacing="-0.05"
+        android:maxLines="1"
+        android:textColor="#ECF7EE"
+        android:textFontWeight="300"
+        android:textSize="36sp" />
+
+    <TextView
+        android:id="@+id/ring_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:includeFontPadding="false"
+        android:letterSpacing="0.08"
+        android:maxLines="1"
+        android:paddingTop="3dp"
+        android:textColor="#ACC5B5"
+        android:textFontWeight="600"
+        android:textSize="10sp" />
+</LinearLayout>

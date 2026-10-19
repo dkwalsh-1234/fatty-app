@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The design's sample ring (07-widget-light.html), for the widget picker only. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="136dp" android:height="136dp"
+    android:viewportWidth="136" android:viewportHeight="136">
+    <path android:pathData="M10.5,68a57.5,57.5 0 1 0 115,0a57.5,57.5 0 1 0 -115,0z"
+        android:fillColor="#00000000" android:strokeColor="#1AECF7EE" android:strokeWidth="15" />
+    <path android:pathData="M15.39,44.81A57.5,57.5 0 0 1 66.5,10.52"
+        android:fillColor="#00000000" android:strokeColor="#E6C3F556" android:strokeWidth="3"
+        android:strokeLineCap="round" />
+    <path android:pathData="M75.48,10.99A57.5,57.5 0 1 1 21.7,102.1"
+        android:fillColor="#00000000" android:strokeColor="#FF758D7F" android:strokeWidth="15"
+        android:strokeLineCap="round" />
+    <path android:pathData="M75.48,10.99A57.5,57.5 0 1 1 26.16,107.44"
+        android:fillColor="#00000000" android:strokeColor="#FFB699EB" android:strokeWidth="15"
+        android:strokeLineCap="round" />
+    <path android:pathData="M75.48,10.99A57.5,57.5 0 0 1 86.12,122.57"
+        android:fillColor="#00000000" android:strokeColor="#FFFDBC6F" android:strokeWidth="15"
+        android:strokeLineCap="round" />
+    <path android:pathData="M75.48,10.99A57.5,57.5 0 0 1 121.19,46.15"
+        android:fillColor="#00000000" android:strokeColor="#FF70CCEE" android:strokeWidth="15"
+        android:strokeLineCap="round" />
+</vector>

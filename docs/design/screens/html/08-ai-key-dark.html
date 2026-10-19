@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=412">
+<title>AI key step, dark</title>
+<style>
+@font-face { font-family: Geist; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+html, body { margin: 0; background: #555; }
+body { width: 412px; }
+</style>
+</head>
+<body>
+
+
+<div style="width: 412px; height: 915px; position: relative; overflow: hidden; background: #081E17; color: #ECF7EE; font-family: Geist, system-ui, sans-serif">
+
+  <header style="height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px 0 12px">
+    <button aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; background: none; padding: 0; color: inherit"><span style="width: 36px; height: 36px; border-radius: 18px; background: #1C352C; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg></span></button>
+    <div aria-label="Step 3 of 3" style="display: flex; gap: 6px"><span style="width: 18px; height: 6px; border-radius: 3px; background: #3F5B4D"></span><span style="width: 18px; height: 6px; border-radius: 3px; background: #3F5B4D"></span><span style="width: 18px; height: 6px; border-radius: 3px; background: #C3F556"></span></div>
+  </header>
+
+  <div style="padding: 8px 24px 0; display: flex; flex-direction: column; gap: 10px">
+    <h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.15">Add an AI key</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 1.45">A key lets the app read labels, meal photos and typed meals. Search, barcode scanning, typing a label in by hand and saved meals all work without one.</p>
+    <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #ACC5B5">An AI chat subscription does not include API access. API keys are separate and billed per use by each provider. Your key is stored encrypted and used only on the server; afterwards you will only see its last four characters.</p>
+  </div>
+
+  <fieldset style="margin: 18px 16px 0; padding: 0; border: 0">
+    <legend style="padding: 0 8px 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; color: #ACC5B5">CHOOSE A PROVIDER</legend>
+    <div style="background: #112921; border-radius: 26px; padding: 0 20px; box-shadow: none">
+      
+        <label style="display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-top: 0">
+          <input type="radio" name="provider" value="claude" style="appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin: 1px 0 0; flex: none; box-sizing: border-box; border-radius: 11px; border: 2px solid #ACC5B5; background: transparent">
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 3px">
+            <span style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px">
+              <span style="font-size: 16px; font-weight: 600">Claude <span style="font-weight: 400; color: #ACC5B5">· Anthropic</span></span>
+              <a href="#" style="font-size: 14px; font-weight: 600; color: #C3F556; text-decoration: none; padding: 4px 0">Get a key</a>
+            </span>
+            <span style="font-size: 12px; line-height: 1.4; color: #ACC5B5">Data use for API traffic: [one line from config]</span>
+          </span>
+        </label>
+      
+        <label style="display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-top: 1px solid rgba(236,247,238,0.08)">
+          <input type="radio" name="provider" value="deepseek" style="appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin: 1px 0 0; flex: none; box-sizing: border-box; border-radius: 11px; border: 2px solid #ACC5B5; background: transparent">
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 3px">
+            <span style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px">
+              <span style="font-size: 16px; font-weight: 600">DeepSeek <span style="font-weight: 400; color: #ACC5B5">· DeepSeek</span></span>
+              <a href="#" style="font-size: 14px; font-weight: 600; color: #C3F556; text-decoration: none; padding: 4px 0">Get a key</a>
+            </span>
+            <span style="font-size: 12px; line-height: 1.4; color: #ACC5B5">Data use for API traffic: [one line from config]</span>
+          </span>
+        </label>
+      
+        <label style="display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-top: 1px solid rgba(236,247,238,0.08)">
+          <input type="radio" name="provider" value="gemini" style="appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin: 1px 0 0; flex: none; box-sizing: border-box; border-radius: 11px; border: 2px solid #ACC5B5; background: transparent">
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 3px">
+            <span style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px">
+              <span style="font-size: 16px; font-weight: 600">Gemini <span style="font-weight: 400; color: #ACC5B5">· Google</span></span>
+              <a href="#" style="font-size: 14px; font-weight: 600; color: #C3F556; text-decoration: none; padding: 4px 0">Get a key</a>
+            </span>
+            <span style="font-size: 12px; line-height: 1.4; color: #ACC5B5">Data use for API traffic: [one line from config]</span>
+          </span>
+        </label>
+      
+    </div>
+  </fieldset>
+
+  <div style="margin: 18px 16px 0; display: flex; flex-direction: column; gap: 6px; opacity: 0.5">
+    <label for="aikeyb" style="padding: 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; color: #ACC5B5">API KEY</label>
+    <div style="display: flex; gap: 8px">
+      <input id="aikeyb" type="password" disabled="" placeholder="Choose a provider first" style="flex: 1; min-width: 0; height: 48px; box-sizing: border-box; border: 0; border-radius: 24px; background: #112921; padding: 0 18px; color: #ECF7EE; font-family: inherit; font-size: 14px">
+      <button disabled="" style="height: 48px; padding: 0 18px; border: 0; border-radius: 24px; background: #112921; color: inherit; font: inherit; font-size: 15px; font-weight: 600">Test</button>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 16px; right: 16px; bottom: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 6px; border-radius: 34px; background: rgba(28,53,44,0.82); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); box-shadow: 0 0 0 1px rgba(236,247,238,0.10), 0 12px 30px rgba(0,0,0,0.5)">
+    <button style="height: 52px; border: 0; border-radius: 26px; background: #1C352C; color: #ECF7EE; font: inherit; font-size: 16px; font-weight: 600">Skip for now</button>
+    <button disabled="" style="height: 52px; border: 0; border-radius: 26px; background: #1C352C; color: #7A9385; font: inherit; font-size: 16px; font-weight: 600">Save key</button>
+  </div>
+</div>
+
+</body>
+</html>
