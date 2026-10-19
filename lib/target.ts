@@ -38,7 +38,7 @@ export interface BurnDay {
   active_kcal: number | null;
 }
 
-export type ActivitySource = 'measured' | 'estimated' | 'stable' | 'override';
+export type ActivityKind = 'measured' | 'estimated' | 'stable';
 
 export interface TargetInput {
   today: string;
@@ -57,23 +57,32 @@ export interface TargetInput {
   overrideKcal?: number | null;
 }
 
+/** The one energy target. Every screen shows these numbers; nothing else does the maths. */
 export interface TargetBreakdown {
-  /** Rounded to the nearest 10 kcal. */
-  target: number;
   resting: number;
   activity: number;
-  activitySource: ActivitySource;
+  activityKind: ActivityKind;
   adjustment: number;
-  /** The part of the target that isn't activity: resting + adjustment (the ring's base track). */
+  /** resting + activity + adjustment, before rounding (a typed target when `own`). */
+  target: number;
+  /** What's shown: the nearest 10 kcal. */
+  rounded: number;
+  /** A typed energy target replaces the sum. */
+  own: boolean;
+  /** The part that isn't activity: rounded − activity (the ring's base track). */
   base: number;
   daysLeft: number | null;
-  /** Resting + activity, before the goal adjustment. */
+  /** resting + activity, before the goal adjustment. */
   maintenance: number;
 }
 
-function activityFromBurn(burn: BurnDay, resting: number): number | null {
+/**
+ * Activity from one day's burn. Active calories win. Otherwise activity = total − resting, never
+ * below 0; a total below resting energy is treated as missing (an artefact, or a day barely begun).
+ */
+export function activityFromBurn(burn: BurnDay, resting: number): number | null {
   if (burn.active_kcal != null) return Math.max(0, burn.active_kcal);
-  if (burn.total_kcal != null) return Math.max(0, burn.total_kcal - resting);
+  if (burn.total_kcal != null && burn.total_kcal >= resting) return burn.total_kcal - resting;
   return null;
 }
 
@@ -88,39 +97,43 @@ export function computeTarget(input: TargetInput): TargetBreakdown {
   const age = ageOn(input.birthDate, input.today);
   const resting = restingKcal({ weightKg: input.currentKg, heightCm: input.heightCm, age, sex: input.sex });
   const { adjustment, daysLeft } = dailyAdjustment(input.currentKg, input.goal, input.today);
+  const estimate = resting * ACTIVITY_FACTORS[input.activityLevel];
 
   if (input.overrideKcal != null && input.overrideKcal > 0) {
-    const t = roundTarget(input.overrideKcal);
-    return { target: t, resting, activity: 0, activitySource: 'override', adjustment: 0, base: t, daysLeft, maintenance: resting };
+    const r = roundTarget(input.overrideKcal);
+    return { resting, activity: 0, activityKind: 'estimated', adjustment: 0, target: input.overrideKcal, rounded: r, own: true, base: r, daysLeft, maintenance: resting + estimate };
   }
 
   let activity: number;
-  let activitySource: ActivitySource;
-  const week = (input.burnLast7 ?? []).filter((b) => b.total_kcal != null);
+  let activityKind: ActivityKind;
+  // Days whose total is below resting energy are missing, so they never drag the average down.
+  const week = (input.burnLast7 ?? []).filter((b) => b.total_kcal != null && b.total_kcal >= resting);
   const measuredToday = input.burnToday ? activityFromBurn(input.burnToday, resting) : null;
 
   if (input.stableMode && week.length > 0) {
     // Stable mode: the 7-day average of total burn is the whole-day figure.
     const avgTotal = week.reduce((s, b) => s + (b.total_kcal as number), 0) / week.length;
     activity = Math.max(0, avgTotal - resting);
-    activitySource = 'stable';
+    activityKind = 'stable';
   } else if (measuredToday != null) {
     activity = measuredToday;
-    activitySource = 'measured';
+    activityKind = 'measured';
   } else {
-    activity = resting * ACTIVITY_FACTORS[input.activityLevel];
-    activitySource = 'estimated';
+    activity = estimate;
+    activityKind = 'estimated';
   }
 
-  const raw = resting + activity + adjustment;
-  const target = roundTarget(raw);
+  const target = resting + activity + adjustment;
+  const rounded = roundTarget(target);
   return {
-    target,
     resting,
     activity,
-    activitySource,
+    activityKind,
     adjustment,
-    base: Math.max(0, target - activity),
+    target,
+    rounded,
+    own: false,
+    base: Math.max(0, rounded - activity),
     daysLeft,
     maintenance: resting + activity,
   };

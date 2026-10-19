@@ -8,15 +8,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/components/app/AppProvider';
 import { WeightChart, type WeightPoint } from '@/components/app/WeightChart';
 import { WeighInSheet } from '@/components/app/WeighInSheet';
-import { evaluateGoal, GoalForm, type GoalValues } from '@/components/forms/GoalForm';
+import { evaluateGoal, GoalForm, type GoalContext, type GoalValues } from '@/components/forms/GoalForm';
+import { PRECISION_NOTE, TargetBreakdownCard } from '@/components/app/TargetBreakdown';
 import { ProfileForm, profileErrors, type ProfileValues } from '@/components/forms/ProfileForm';
 import { Button, CapsLabel, Card, Icon, Notice, Screen, ScreenTitle, TopBar } from '@/components/ui';
 import { inWrapper } from '@/lib/bridge';
 import { addDays, localDate, shortDate, shortDateYear } from '@/lib/dates';
-import { buildDay, pickBurn } from '@/lib/day';
+import { buildDay, pickBurn, targetFor } from '@/lib/day';
 import { deleteWeighIn, saveGoal, saveProfile } from '@/lib/data';
-import { int, kcalIn, kg, unitLabel } from '@/lib/format';
-import { ACTIVITY_FACTORS, ACTIVITY_LABELS, KCAL_PER_KG, type WarningKey } from '@/lib/target';
+import { int, kcalIn, kg } from '@/lib/format';
+import type { WarningKey } from '@/lib/target';
 
 const WARNING_NAMES: Record<string, string> = {
   rate: 'Faster than 1% of body weight a week',
@@ -27,7 +28,6 @@ export default function GoalPage() {
   const app = useApp();
   const tz = app.profile.time_zone;
   const unit = app.profile.energy_unit;
-  const u = unitLabel(unit);
   const [weighing, setWeighing] = useState(false);
   const [editGoal, setEditGoal] = useState(false);
   const [editProfile, setEditProfile] = useState(false);
@@ -114,31 +114,8 @@ export default function GoalPage() {
       {t && (
         <>
           <CapsLabel>How today&apos;s target is worked out</CapsLabel>
-          <Card className="flex flex-col gap-0 py-2">
-            <Line label="Resting energy" sub="Mifflin-St Jeor, from your age, sex, height and latest weight" value={`${int(kcalIn(t.resting, unit))} ${u}`} />
-            <Line
-              label="Activity"
-              sub={
-                t.activitySource === 'measured'
-                  ? 'Measured today through Health Connect'
-                  : t.activitySource === 'stable'
-                    ? 'Stable mode: from your 7-day average burn'
-                    : t.activitySource === 'override'
-                      ? 'Not used: you typed your own target'
-                      : `Estimated: ${ACTIVITY_LABELS[app.profile.activity_level ?? 'sitting'].toLowerCase()} (resting × ${ACTIVITY_FACTORS[app.profile.activity_level ?? 'sitting']})`
-              }
-              value={`${int(kcalIn(t.activity, unit))} ${u}`}
-            />
-            <Line
-              label="Goal adjustment"
-              sub={t.daysLeft != null && goal && currentKg ? `${kg(Math.abs(goal.target_weight_kg - currentKg))} kg × ${KCAL_PER_KG.toLocaleString('en-AU')} kcal ÷ ${t.daysLeft} days left` : 'No goal'}
-              value={`${t.adjustment < 0 ? '−' : '+'}${int(kcalIn(Math.abs(t.adjustment), unit))} ${u}`}
-            />
-            <Line label="Today's target" sub="Rounded to the nearest 10" value={`${int(kcalIn(t.target, unit))} ${u}`} strong />
-          </Card>
-          <p className="mx-1 mt-2 text-[13px] leading-snug text-ink2">
-            Watch estimates of calories burned are often 20 to 30% out, the formula is a population average, and 7,700 kcal per kg is a rule of thumb that overstates loss over longer periods. Judge progress by your weight trend.
-          </p>
+          <TargetBreakdownCard t={t} unit={unit} activityLevel={app.profile.activity_level} kgToGo={goal && currentKg ? goal.target_weight_kg - currentKg : null} />
+          <p className="mx-1 mt-2 text-[13px] leading-snug text-ink2">{PRECISION_NOTE}</p>
         </>
       )}
 
@@ -192,18 +169,6 @@ export default function GoalPage() {
   );
 }
 
-function Line({ label, sub, value, strong }: { label: string; sub: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex min-h-14 items-center gap-3 border-t border-separator py-2 first:border-t-0">
-      <span className="min-w-0 flex-1">
-        <span className={strong ? 'block text-base font-semibold' : 'block text-base'}>{label}</span>
-        <span className="block text-[13px] leading-snug text-ink2">{sub}</span>
-      </span>
-      <span className={strong ? 'text-[19px] font-medium tnum' : 'text-[15px] tnum'}>{value}</span>
-    </div>
-  );
-}
-
 function EditGoal({ currentKg, onDone }: { currentKg: number; onDone: (msg: string) => void }) {
   const app = useApp();
   const p = app.profile;
@@ -218,16 +183,26 @@ function EditGoal({ currentKg, onDone }: { currentKg: number; onDone: (msg: stri
   const [dismissed, setDismissed] = useState<WarningKey[]>(() => (changed ? [] : (app.goal?.warnings_dismissed ?? [])));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const ctx = {
-    birthDate: p.birth_date!,
+  const ctx: GoalContext = {
     sex: p.sex!,
-    heightCm: p.height_cm!,
-    activityLevel: p.activity_level!,
     currentKg,
     today: app.today,
     ratePct: p.warn_rate_pct_per_week,
     floorKcal: p.warn_floor_kcal,
     unit: p.energy_unit,
+    targetFor: (goal, overrideKcal) =>
+      targetFor({ date: app.today, profile: p, weighIns: app.weighIns, burn: app.burn, goal, fallbackKg: currentKg, overrideKcal }),
+    // Whole-day: 7-day average where there is one, else the estimate; never today's part-day burn.
+    wholeDayFor: (goal, overrideKcal) =>
+      targetFor({
+        date: app.today,
+        profile: { ...p, stable_mode: true },
+        weighIns: app.weighIns,
+        burn: app.burn.filter((b) => b.date !== app.today),
+        goal,
+        fallbackKg: currentKg,
+        overrideKcal,
+      }),
   };
   const evaluation = evaluateGoal(g, ctx, dismissed);
 

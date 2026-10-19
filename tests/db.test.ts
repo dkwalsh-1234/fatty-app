@@ -277,7 +277,11 @@ describe("search", () => {
           ('afcd', 'F2', 'shared', 'Salad, garden', 80),
           ('ausnut', 'A3', 'shared', 'Banana, cavendish, peeled, raw', 380),
           ('afcd', 'F4', 'shared', 'Pumpkin, raw', 90),
-          ('ausnut', 'A4', 'shared', 'Pumpkin, raw', 92);
+          ('ausnut', 'A4', 'shared', 'Pumpkin, raw', 92),
+          ('ausnut', 'A5', 'shared', 'Coffee, flat white/cappuccino/latte, single shot & cereal based milk (rice/oat)', 160),
+          ('ausnut', 'A6', 'shared', 'Coffee, flat white/cappuccino/latte, single shot & regular fat cow''s milk', 230),
+          ('ausnut', 'A7', 'shared', 'Oat beverage, unfortified', 180),
+          ('ausnut', 'A8', 'shared', 'Coffee, long black, from ground coffee beans', 5);
       `),
     );
   });
@@ -306,6 +310,42 @@ describe("search", () => {
     const daniel = await as(DANIEL, () => db.query<{ name: string }>(`select name from public.search_foods('salad')`));
     // Daniel hasn't logged it, so match quality decides: a name starting with the query wins.
     expect(daniel.rows[0].name).toBe("Salad, garden");
+  });
+
+  it("normalises the query: brackets, amounts, units and filler words out", async () => {
+    const r = await one<{ w: string[] }>(`select public.normalise_food_query('8 oz Flat white (with oat milk), 250ml') as w`);
+    expect(r.w).toEqual(["flat", "white", "oat", "milk"]);
+  });
+
+  it("finds an oat flat white however it's phrased", async () => {
+    const want = "Coffee, flat white/cappuccino/latte, single shot & cereal based milk (rice/oat)";
+    for (const q of ["oat flat white", "flat white oat milk", "Flat white (oat milk)", "8 oz flat white with oat milk"]) {
+      const r = await as(DANIEL, () => db.query<{ name: string; tier: number }>(`select name, tier from public.search_foods($1)`, [q]));
+      expect(r.rows[0], q).toMatchObject({ name: want, tier: 1 });
+    }
+  });
+
+  it("falls back to any word when not every word matches, more words first", async () => {
+    const r = await as(DANIEL, () => db.query<{ name: string; tier: number }>(`select name, tier from public.search_foods('flat white chai')`));
+    expect(r.rows.length).toBeGreaterThan(0);
+    expect(r.rows.every((x) => x.tier === 2)).toBe(true);
+    expect(r.rows[0].name).toMatch(/flat white/);
+  });
+
+  it("uses synonyms: long black finds coffee, long black", async () => {
+    const r = await as(DANIEL, () => db.query<{ name: string }>(`select name from public.search_foods('long black')`));
+    expect(r.rows[0].name).toBe("Coffee, long black, from ground coffee beans");
+  });
+
+  it("returns typo matches only from the trigram tier", async () => {
+    const r = await as(DANIEL, () => db.query<{ name: string; tier: number }>(`select name, tier from public.search_foods('brocoli')`));
+    expect(r.rows[0].tier).toBe(3);
+    expect(r.rows.map((x) => x.name)).toContain("Broccoli, raw");
+  });
+
+  it("returns nothing for filler alone", async () => {
+    const r = await as(DANIEL, () => db.query(`select * from public.search_foods('with a')`));
+    expect(r.rows).toHaveLength(0);
   });
 
   it("breaks ties on source: AUSNUT before AFCD", async () => {

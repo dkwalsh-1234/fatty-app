@@ -5,13 +5,15 @@ import { targetState } from '@/design/components/TargetBar';
 import { buildChips, cleanTyped, mealPer100, measureChipLabel, parseTyped } from '@/lib/amount';
 import { barcodeVariants, hasValidCheckDigit, normalizeBarcode, upcEToUpcA } from '@/lib/barcode';
 import { addDays, ageOn, dayBounds, localDate, mealForTime, zonedToUtc } from '@/lib/dates';
-import { buildDay, pickBurn } from '@/lib/day';
+import { evaluateGoal, goalLine, todaysTargetLine } from '@/components/forms/GoalForm';
+import { captionParts } from '@/lib/caption';
+import { buildDay, pickBurn, targetFor } from '@/lib/day';
 import { saltText } from '@/lib/format';
 import { emptyPer100, scale, sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { parseSearch, parseText } from '@/lib/parse';
 import { mapOffProduct } from '@/lib/sources/off';
 import { checkGoal, computeTarget, restingKcal, roundTarget, targetsConflict } from '@/lib/target';
-import type { BurnRow, Food, LogEntry, Profile } from '@/lib/types';
+import type { BurnRow, Food, Goal, LogEntry, Profile } from '@/lib/types';
 import { widgetSummary } from '@/lib/widget';
 
 const p100 = (o: Partial<Per100>): Per100 => ({ ...emptyPer100(), ...o });
@@ -78,18 +80,18 @@ describe('energy target', () => {
     // Adjustment: (84 − 86.6) × 7,700 ÷ 62 days = −322.9. Target 2,146.6 → 2,150.
     const t = computeTarget({ ...base, goal: { targetKg: 84, targetDate: '2026-12-20' } });
     expect(t.resting).toBeCloseTo(1796, 6);
-    expect(t.activitySource).toBe('estimated');
+    expect(t.activityKind).toBe('estimated');
     expect(t.activity).toBeCloseTo(673.5, 6);
     expect(t.adjustment).toBeCloseTo((-2.6 * 7700) / 62, 6);
-    expect(t.target).toBe(2150);
+    expect(t.rounded).toBe(2150);
   });
 
   it('rises by measured active burn, shown as its own part', () => {
     const t0 = computeTarget({ ...base, goal: null, burnToday: { date: '2026-10-19', total_kcal: null, active_kcal: 0 } });
     const t = computeTarget({ ...base, goal: null, burnToday: { date: '2026-10-19', total_kcal: 2206, active_kcal: 410 } });
-    expect(t.activitySource).toBe('measured');
-    expect(t.target - t0.target).toBe(410);
-    expect(t.target - t.base).toBeCloseTo(410, 6);
+    expect(t.activityKind).toBe('measured');
+    expect(t.rounded - t0.rounded).toBe(410);
+    expect(t.rounded - t.base).toBeCloseTo(410, 6);
   });
 
   it('works out activity as total minus resting when there is only a total', () => {
@@ -109,19 +111,113 @@ describe('energy target', () => {
   it('uses the 7-day average in stable mode', () => {
     const week = Array.from({ length: 7 }, (_, i) => ({ date: addDays('2026-10-19', -i - 1), total_kcal: 2500 + i * 10, active_kcal: null }));
     const t = computeTarget({ ...base, goal: null, burnLast7: week, stableMode: true, burnToday: { date: '2026-10-19', total_kcal: 3000, active_kcal: 900 } });
-    expect(t.activitySource).toBe('stable');
+    expect(t.activityKind).toBe('stable');
     expect(t.resting + t.activity).toBeCloseTo(2530, 6);
   });
 
   it('lets anyone type their own target', () => {
     const t = computeTarget({ ...base, goal: { targetKg: 70, targetDate: '2026-11-01' }, overrideKcal: 1234 });
-    expect(t.target).toBe(1230);
-    expect(t.activitySource).toBe('override');
+    expect(t.rounded).toBe(1230);
+    expect(t.own).toBe(true);
   });
 
   it('rounds to the nearest 10 and computes resting energy for women', () => {
     expect(roundTarget(2146.6)).toBe(2150);
     expect(restingKcal({ weightKg: 60, heightCm: 165, age: 30, sex: 'female' })).toBe(600 + 1031.25 - 150 - 161);
+  });
+});
+
+describe("Daniel's numbers from testing on 20 Oct (one target everywhere)", () => {
+  // Male, 46, 178 cm, 85.0 kg, goal 81 kg by 12 Jan 2027; Garmin: 285 active kcal by 7:51 am.
+  const profile: Profile = {
+    user_id: 'u', display_name: 'Daniel', is_admin: true, birth_date: '1980-01-01', sex: 'male', height_cm: 178, activity_level: 'some',
+    energy_target_override_kcal: null, warn_rate_pct_per_week: 1, warn_floor_kcal: null, time_zone: 'Australia/Sydney', energy_unit: 'kcal',
+    meal_boundaries: null, widget_nutrients: ['protein', 'sat_fat', 'sodium'], stable_mode: false, burn_source: null, onboarded_at: '2026-10-19',
+  };
+  const goal: Goal = { id: 'g', start_weight_kg: 85, start_date: '2026-10-20', target_weight_kg: 81, target_date: '2027-01-12', active: true, warnings_dismissed: [], created_at: '' };
+  const weighIns = [{ id: 'w', measured_at: '2026-10-19T21:00:00Z', weight_kg: 85, source: 'manual' }];
+  const burn: BurnRow[] = [{ date: '2026-10-20', source_app: 'garmin', total_kcal: 880, active_kcal: 285 }];
+  const draft = { targetKg: 81, targetDate: '2027-01-12' };
+
+  it('gives 1,738 resting − 367 goal + 285 active = 1,660', () => {
+    const t = targetFor({ date: '2026-10-20', profile, weighIns, burn, goal: draft })!;
+    expect(Math.round(t.resting)).toBe(1738);
+    expect(Math.round(t.adjustment)).toBe(-367);
+    expect(t.activityKind).toBe('measured');
+    expect(t.activity).toBe(285);
+    expect(t.rounded).toBe(1660);
+  });
+
+  it('shows the same target on Today and in the Goal screen preview', () => {
+    const today = buildDay({ date: '2026-10-20', entries: [], profile, goal, weighIns, burn, targets: [] });
+    const preview = evaluateGoal(
+      { target_kg: '81', target_date: '2027-01-12', own_target: false, own_target_value: '' },
+      {
+        sex: 'male', currentKg: 85, today: '2026-10-20', ratePct: 1, floorKcal: null, unit: 'kcal',
+        targetFor: (g, o) => targetFor({ date: '2026-10-20', profile, weighIns, burn, goal: g, overrideKcal: o }),
+        wholeDayFor: (g, o) => targetFor({ date: '2026-10-20', profile: { ...profile, stable_mode: true }, weighIns, burn: [], goal: g, overrideKcal: o }),
+      },
+      [],
+    );
+    expect(preview.breakdown!.rounded).toBe(today.target!.rounded);
+    expect(goalLine(preview.breakdown!, 'kcal')).toBe('−367 kcal a day · about 0.33 kg a week');
+    expect(todaysTargetLine(preview.breakdown!, 'kcal')).toBe("Today's target 1,660 so far");
+    // The guardrails use a whole-day figure, so this morning's low burn doesn't warn.
+    expect(preview.check!.warnings).toEqual([]);
+  });
+
+  it('estimates 652 active only when there is no burn for today', () => {
+    const t = targetFor({ date: '2026-10-20', profile, weighIns, burn: [], goal: draft })!;
+    expect(t.activityKind).toBe('estimated');
+    expect(Math.round(t.activity)).toBe(652);
+    expect(t.rounded).toBe(2020);
+  });
+
+  it('writes the caption as the sum, which adds up to the target before rounding', () => {
+    for (const b of [burn, [], [{ date: '2026-10-20', source_app: 'garmin', total_kcal: 2400, active_kcal: null }]]) {
+      const t = targetFor({ date: '2026-10-20', profile, weighIns, burn: b, goal: draft })!;
+      const c = captionParts(t, 'kcal');
+      if (c.own) throw new Error('unexpected');
+      const n = (x: string) => Number(x.replace(/,/g, ''));
+      const sum = n(c.resting) + (c.goal ? (c.goal.sign === '−' ? -1 : 1) * n(c.goal.value) : 0) + n(c.active);
+      expect(Math.abs(sum - t.target)).toBeLessThanOrEqual(1.5);
+    }
+    const measured = captionParts(targetFor({ date: '2026-10-20', profile, weighIns, burn, goal: draft })!, 'kcal');
+    expect(measured.text).toBe('1,738 resting − 367 goal + 285 active so far');
+    const est = captionParts(targetFor({ date: '2026-10-20', profile, weighIns, burn: [], goal: draft })!, 'kcal');
+    expect(est.text).toBe('1,738 resting − 367 goal + 652 active, est.');
+    const kj = captionParts(targetFor({ date: '2026-10-20', profile, weighIns, burn, goal: draft })!, 'kj');
+    expect(kj.text).toBe('7,270 resting − 1,534 goal + 1,192 active so far');
+    const own = captionParts(targetFor({ date: '2026-10-20', profile: { ...profile, energy_target_override_kcal: 1800 }, weighIns, burn, goal: draft })!, 'kcal');
+    expect(own).toEqual({ own: true, text: 'Your own target' });
+    const gaining = captionParts(targetFor({ date: '2026-10-20', profile, weighIns, burn, goal: { targetKg: 88, targetDate: '2027-01-12' } })!, 'kcal');
+    expect(gaining.text).toMatch(/^1,738 resting \+ 275 goal \+ 285 active so far$/);
+  });
+});
+
+describe('burn guards', () => {
+  const base = { today: '2026-10-19', birthDate: '1986-05-01', sex: 'male' as const, heightCm: 180, activityLevel: 'some' as const, currentKg: 86.6, goal: null };
+
+  it('treats a total below resting energy as missing, never negative activity', () => {
+    const t = computeTarget({ ...base, burnToday: { date: '2026-10-19', total_kcal: 32, active_kcal: null } });
+    expect(t.activityKind).toBe('estimated');
+    expect(t.activity).toBeGreaterThan(0);
+  });
+
+  it('leaves such days out of the Stable mode average', () => {
+    const week = [
+      { date: '2026-10-18', total_kcal: 2600, active_kcal: null },
+      { date: '2026-10-17', total_kcal: 32, active_kcal: null },
+      { date: '2026-10-16', total_kcal: 2400, active_kcal: null },
+    ];
+    const t = computeTarget({ ...base, burnLast7: week, stableMode: true });
+    expect(t.resting + t.activity).toBeCloseTo(2500, 6);
+  });
+
+  it('still uses active calories when the total so far is below resting', () => {
+    const t = computeTarget({ ...base, burnToday: { date: '2026-10-19', total_kcal: 880, active_kcal: 285 } });
+    expect(t.activityKind).toBe('measured');
+    expect(t.activity).toBe(285);
   });
 });
 

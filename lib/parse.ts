@@ -32,10 +32,14 @@ const UNIT_WORDS: Record<string, { unit: Unit; factor: number }> = {
   litres: { unit: 'ml', factor: 1000 },
   liter: { unit: 'ml', factor: 1000 },
   liters: { unit: 'ml', factor: 1000 },
+  // Ounces are by weight here; a coffee's "8 oz" cup comes out close either way (227 g vs 237 ml).
+  oz: { unit: 'g', factor: 28.35 },
+  ounce: { unit: 'g', factor: 28.35 },
+  ounces: { unit: 'g', factor: 28.35 },
 };
 
 const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
-const UNIT = String.raw`(kgs?|gms?|grams?|g|mls?|millilit(?:re|er)s?|lit(?:re|er)s?|l)`;
+const UNIT = String.raw`(kgs?|gms?|grams?|g|mls?|millilit(?:re|er)s?|lit(?:re|er)s?|l|oz|ounces?)`;
 const LEADING_UNIT = new RegExp(String.raw`^\s*${NUM}\s*${UNIT}\b\s*(?:of\s+)?(.+)$`, 'i');
 const LEADING_BARE = new RegExp(String.raw`^\s*${NUM}\s+(?:x\s+)?(.+)$`, 'i');
 const TRAILING = new RegExp(String.raw`^(.+?)[\s,]+${NUM}\s*${UNIT}?\s*$`, 'i');

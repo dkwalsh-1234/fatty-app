@@ -145,6 +145,7 @@ function Today() {
         capsDate={longDate(date).toUpperCase()}
         weightKg={weightKg}
         unit={app.profile.energy_unit}
+        activityLevel={app.profile.activity_level}
         missingKeys={missingKeys}
         notice={notice ? <Notice className="py-1">{notice}</Notice> : null}
         handlers={{

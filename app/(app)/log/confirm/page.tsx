@@ -103,12 +103,18 @@ function Confirm() {
     })().catch((e: Error) => setError(e.message));
   }, [photoId, textKey]);
 
+  // Matched rows are foods; unmatched ones still need a food and are never counted or saved.
+  const found = rows.filter((r) => !r.suggested && r.food);
+  const needsFood = rows.filter((r) => !r.suggested && !r.food);
+  const suggestions = rows.filter((r) => r.suggested);
   const active = rows.filter((r) => r.on && r.food && r.grams);
+  const needsAmount = rows.filter((r) => r.on && r.food && !r.grams);
+  const pendingFood = rows.filter((r) => r.on && !r.food).length;
+  const canSave = active.length > 0 && needsAmount.length === 0;
   const totals = useMemo(() => sumEntries(active.map((r) => ({ per100: r.food!.per100, grams: r.grams! }))), [active]);
   const totalGrams = active.reduce((s, r) => s + (r.grams ?? 0), 0);
   const unit = app.profile.energy_unit;
-  const found = rows.filter((r) => !r.suggested);
-  const suggestions = rows.filter((r) => r.suggested);
+  const needsFoodLine = pendingFood > 0 ? `${pendingFood} ${pendingFood === 1 ? 'item needs' : 'items need'} a food` : null;
 
   const update = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
@@ -132,9 +138,8 @@ function Confirm() {
 
   async function save() {
     setError(null);
-    if (!active.length) return setError('Nothing to save: add or tick at least one item.');
-    const missing = rows.filter((r) => r.on && (!r.food || !r.grams));
-    if (missing.length) return setError(`Choose a food and amount for ${missing[0].label}, or remove it.`);
+    // The buttons stay disabled until this holds; each row says what it still needs.
+    if (!canSave) return;
     setSaving(true);
     try {
       const eatenAt = zonedToUtc(when.date, when.time, tz).toISOString();
@@ -165,8 +170,7 @@ function Confirm() {
 
   async function saveAsMeal() {
     const name = naming?.trim();
-    if (!name) return;
-    if (!active.length) return setError('Tick at least one item first.');
+    if (!name || !canSave) return;
     setSaving(true);
     try {
       await saveMeal({ name, serves: null, cooked_weight_g: null, ingredients: active.map((r) => ({ food_id: r.food!.id, grams: r.grams! })) });
@@ -223,45 +227,74 @@ function Confirm() {
           <div className="rounded-card bg-raised px-5 py-3.5 text-[15px] leading-snug text-ink2">“{draft.text}”</div>
         )}
 
-        <section aria-label="Items found" className="rounded-card bg-surface pb-1.5 pl-5 pr-1.5 pt-1 shadow-[var(--cc-card-shadow)]">
-          <div className="flex h-10 items-center pr-3.5">
-            <span className="flex-1 text-[17px] font-semibold">Found</span>
-            <span className="text-[13px] text-ink2">{found.filter((r) => r.on).length} {found.filter((r) => r.on).length === 1 ? 'item' : 'items'}</span>
-          </div>
-          {found.map((r) => (
-            <div key={r.key} className={cx('flex min-h-14 items-center gap-1.5 border-t border-separator py-1', !r.on && 'opacity-50')}>
-              <span className="min-w-0 flex-1">
-                <span className={cx('block truncate text-[15px] font-medium', !r.on && 'line-through')}>{r.food ? r.food.name : r.label}</span>
-                {(!r.food || r.confidence === 'low' || r.note || (r.food && r.food.name.toLowerCase() !== r.label.toLowerCase())) && (
-                  <span className="block truncate text-[12px] text-ink2">
-                    {!r.food
-                      ? `No match for “${r.label}”. Tap ⇄ to search.`
-                      : [r.food.name.toLowerCase() !== r.label.toLowerCase() ? `for “${r.label}”` : null, r.note, r.confidence === 'low' ? 'low confidence' : null].filter(Boolean).join(' · ')}
-                  </span>
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={() => editGrams(r)}
-                aria-label={`${r.food?.name ?? r.label}, ${r.grams ?? 'no'} g. Change amount`}
-                className="press h-[34px] shrink-0 rounded-[17px] border-0 bg-raised px-3.5 text-[15px] font-medium tnum"
-              >
-                {r.grams ? `${r.estimate ? '≈ ' : ''}${int(r.grams)} g` : 'Add g'}
-              </button>
-              <button type="button" onClick={() => setSwapping(r)} aria-label={`Swap ${r.food?.name ?? r.label}`} className="flex h-11 w-10 items-center justify-center border-0 bg-transparent p-0 text-accent">
-                <Icon name="swap" size={20} stroke={1.9} />
-              </button>
-              <button
-                type="button"
-                onClick={() => update(r.key, { on: !r.on })}
-                aria-label={r.on ? `Remove ${r.food?.name ?? r.label}` : `Put back ${r.food?.name ?? r.label}`}
-                className="flex h-11 w-10 items-center justify-center border-0 bg-transparent p-0 text-ink2"
-              >
-                <Icon name={r.on ? 'remove' : 'add'} size={20} />
-              </button>
+        {found.length > 0 && (
+          <section aria-label="Items found" className="rounded-card bg-surface pb-1.5 pl-5 pr-1.5 pt-1 shadow-[var(--cc-card-shadow)]">
+            <div className="flex h-10 items-center pr-3.5">
+              <span className="flex-1 text-[17px] font-semibold">Found</span>
+              <span className="text-[13px] text-ink2">{found.filter((r) => r.on).length} {found.filter((r) => r.on).length === 1 ? 'item' : 'items'}</span>
             </div>
-          ))}
-        </section>
+            {found.map((r) => (
+              <div key={r.key} className={cx('flex min-h-14 items-center gap-1.5 border-t border-separator py-1', !r.on && 'opacity-50')}>
+                <span className="min-w-0 flex-1">
+                  <span className={cx('line-clamp-2 block text-[15px] font-medium leading-snug', !r.on && 'line-through')}>{r.food!.name}</span>
+                  {(r.on && !r.grams) || r.confidence === 'low' || r.note || r.food!.name.toLowerCase() !== r.label.toLowerCase() ? (
+                    <span className={cx('block truncate text-[12px]', r.on && !r.grams ? 'text-warn-text' : 'text-ink2')}>
+                      {r.on && !r.grams
+                        ? 'Add an amount, or remove this item'
+                        : [r.food!.name.toLowerCase() !== r.label.toLowerCase() ? `for “${r.label}”` : null, r.note, r.confidence === 'low' ? 'low confidence' : null].filter(Boolean).join(' · ')}
+                    </span>
+                  ) : null}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => editGrams(r)}
+                  aria-label={`${r.food!.name}, ${r.grams ?? 'no'} g. Change amount`}
+                  className="press h-[34px] shrink-0 rounded-[17px] border-0 bg-raised px-3.5 text-[15px] font-medium tnum"
+                >
+                  {r.grams ? `${r.estimate ? '≈ ' : ''}${int(r.grams)} g` : 'Add g'}
+                </button>
+                <button type="button" onClick={() => setSwapping(r)} aria-label={`Swap ${r.food!.name}`} className="flex h-11 w-10 items-center justify-center border-0 bg-transparent p-0 text-accent">
+                  <Icon name="swap" size={20} stroke={1.9} />
+                </button>
+                <RemoveToggle row={r} onToggle={() => update(r.key, { on: !r.on })} />
+              </div>
+            ))}
+          </section>
+        )}
+
+        {needsFood.length > 0 && (
+          <section aria-label="Items that need a food" className="rounded-card bg-surface pb-1.5 pl-5 pr-1.5 pt-1 shadow-[var(--cc-card-shadow)]">
+            <div className="flex h-10 items-center pr-3.5">
+              <span className="flex-1 text-[17px] font-semibold">Needs a food</span>
+              <span className="text-[13px] text-ink2">{needsFood.filter((r) => r.on).length}</span>
+            </div>
+            {needsFood.map((r) => (
+              <div key={r.key} className={cx('flex min-h-14 items-center gap-1.5 border-t border-separator py-1.5', !r.on && 'opacity-50')}>
+                <span className="min-w-0 flex-1">
+                  <span className={cx('line-clamp-2 block text-[15px] font-medium leading-snug', !r.on && 'line-through')}>
+                    {r.label} <span className="whitespace-nowrap font-normal text-ink2">· not matched</span>
+                  </span>
+                  <span className="block text-[12px] leading-snug text-ink2 tnum">
+                    {r.grams ? `≈ ${int(r.grams)} g · ` : ''}
+                    {r.on ? 'Search for a match or remove this item' : 'Removed'}
+                  </span>
+                </span>
+                {r.on && (
+                  <button
+                    type="button"
+                    onClick={() => setSwapping(r)}
+                    aria-label={`Search for a food for ${r.label}`}
+                    className="press flex h-[34px] shrink-0 items-center gap-1.5 rounded-[17px] border-0 bg-raised px-3 text-[14px] font-semibold text-accent"
+                  >
+                    <Icon name="search" size={16} stroke={2} />
+                    Search
+                  </button>
+                )}
+                <RemoveToggle row={r} onToggle={() => update(r.key, { on: !r.on })} />
+              </div>
+            ))}
+          </section>
+        )}
 
         {suggestions.map((r) => (
           <label key={r.key} className="flex min-h-[62px] items-center gap-3 rounded-card border-[1.5px] border-dashed border-ink3 px-5 py-2">
@@ -276,39 +309,56 @@ function Confirm() {
                 {r.food?.name ?? r.label}
                 {r.note ? ` · ${r.note}` : ''} · {r.grams ? `${int(r.grams)} g` : '?'}
               </span>
-              <span className="text-xs text-ink2">Suggested hidden fat · {r.on ? 'added' : 'not added'}</span>
+              <span className="text-xs text-ink2">
+                Suggested hidden fat · {!r.food ? 'not matched' : r.on ? 'added' : 'not added'}
+              </span>
             </span>
-            <button type="button" onClick={(e) => { e.preventDefault(); void editGrams(r); }} className="border-0 bg-transparent text-[14px] font-semibold text-accent">
-              Amount
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                if (r.food) void editGrams(r);
+                else setSwapping(r);
+              }}
+              className="border-0 bg-transparent text-[14px] font-semibold text-accent"
+            >
+              {r.food ? 'Amount' : 'Search'}
             </button>
           </label>
         ))}
 
-        <section aria-label="Total" className="flex flex-col gap-2.5 rounded-card bg-surface px-5 py-4 shadow-[var(--cc-card-shadow)]">
-          <div className="flex items-baseline justify-between">
-            <span className="text-[38px] font-light leading-none tracking-[-0.04em] tnum">
-              {v.energy_kj == null ? '–' : energyText(v.energy_kj, unit, false)}{' '}
-              <span className="text-sm font-normal tracking-normal text-ink2">{unit === 'kj' ? 'kJ' : 'kcal'}</span>
-            </span>
-            <span className="text-[13px] text-ink2 tnum">
-              {int(totalGrams)} g · {active.length} {active.length === 1 ? 'entry' : 'entries'}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[13px]">
-            {([['protein', 'Protein', v.protein_g], ['carbs', 'Carbs', v.carbs_g], ['fat', 'Fat', v.fat_g], ['other', 'Fibre', v.fibre_g]] as const).map(([c, label, val]) => (
-              <span key={label} className="flex items-center gap-1.5">
-                <MacroDot colour={c} />
-                {label}
-                <span className="font-semibold tnum">{val == null ? '–' : `${fmtGrams(val)} g`}</span>
+        {active.length === 0 ? (
+          <section aria-label="Total" className="rounded-card bg-surface px-5 py-4 text-[15px] text-ink2 shadow-[var(--cc-card-shadow)]">
+            {needsFoodLine ?? 'Nothing ticked yet'}
+          </section>
+        ) : (
+          <section aria-label="Total" className="flex flex-col gap-2.5 rounded-card bg-surface px-5 py-4 shadow-[var(--cc-card-shadow)]">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[38px] font-light leading-none tracking-[-0.04em] tnum">
+                {v.energy_kj == null ? '–' : energyText(v.energy_kj, unit, false)}{' '}
+                <span className="text-sm font-normal tracking-normal text-ink2">{unit === 'kj' ? 'kJ' : 'kcal'}</span>
               </span>
-            ))}
-          </div>
-          <span className="text-xs text-ink2 tnum">
-            Saturated {v.sat_fat_g == null ? '–' : `${fmtGrams(v.sat_fat_g)} g`} · trans {v.trans_fat_g == null ? '–' : `${fmtGrams(v.trans_fat_g)} g`} · sugars{' '}
-            {v.sugars_g == null ? '–' : `${fmtGrams(v.sugars_g)} g`} · sodium {v.sodium_mg == null ? '–' : `${int(v.sodium_mg)} mg (${saltText(v.sodium_mg)})`}
-          </span>
-          {Object.values(totals.missing).some((n) => n > 0) && <span className="text-xs text-ink2">“–” means a food has no value for it.</span>}
-        </section>
+              <span className="text-[13px] text-ink2 tnum">
+                {int(totalGrams)} g · {active.length} {active.length === 1 ? 'entry' : 'entries'}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[13px]">
+              {([['protein', 'Protein', v.protein_g], ['carbs', 'Carbs', v.carbs_g], ['fat', 'Fat', v.fat_g], ['other', 'Fibre', v.fibre_g]] as const).map(([c, label, val]) => (
+                <span key={label} className="flex items-center gap-1.5">
+                  <MacroDot colour={c} />
+                  {label}
+                  <span className="font-semibold tnum">{val == null ? '–' : `${fmtGrams(val)} g`}</span>
+                </span>
+              ))}
+            </div>
+            <span className="text-xs text-ink2 tnum">
+              Saturated {v.sat_fat_g == null ? '–' : `${fmtGrams(v.sat_fat_g)} g`} · trans {v.trans_fat_g == null ? '–' : `${fmtGrams(v.trans_fat_g)} g`} · sugars{' '}
+              {v.sugars_g == null ? '–' : `${fmtGrams(v.sugars_g)} g`} · sodium {v.sodium_mg == null ? '–' : `${int(v.sodium_mg)} mg (${saltText(v.sodium_mg)})`}
+            </span>
+            {Object.values(totals.missing).some((n) => n > 0) && <span className="text-xs text-ink2">“–” means a food has no value for it.</span>}
+            {needsFoodLine && <span className="text-[13px] text-ink2">{needsFoodLine}</span>}
+          </section>
+        )}
 
         <button type="button" onClick={() => setEditingWhen((x) => !x)} className="flex h-9 items-center gap-1 self-center border-0 bg-transparent px-2 text-sm font-semibold text-accent">
           {MEAL_LABEL[when.meal]} · {when.time}
@@ -329,10 +379,10 @@ function Confirm() {
       </div>
 
       <Dock>
-        <DockButton onClick={() => setNaming(naming == null ? (draft.hint ?? '') : null)} disabled={saving}>
+        <DockButton onClick={() => setNaming(naming == null ? (draft.hint ?? '') : null)} disabled={saving || !canSave}>
           Save as meal
         </DockButton>
-        <DockButton primary onClick={save} disabled={saving}>
+        <DockButton primary onClick={save} disabled={saving || !canSave}>
           {saving ? 'Saving…' : 'Save'}
         </DockButton>
       </Dock>
@@ -348,6 +398,20 @@ function Confirm() {
         }}
       />
     </Screen>
+  );
+}
+
+function RemoveToggle({ row, onToggle }: { row: Row; onToggle: () => void }) {
+  const name = row.food?.name ?? row.label;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={row.on ? `Remove ${name}` : `Put back ${name}`}
+      className="flex h-11 w-10 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-ink2"
+    >
+      <Icon name={row.on ? 'remove' : 'add'} size={20} />
+    </button>
   );
 }
 

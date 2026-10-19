@@ -58,11 +58,14 @@ const CANDIDATE_COLS =
 
 const toNum = (v: unknown) => (v == null ? null : Number(v));
 
-/** Top three foods for a name, by the app's own search (so your own foods and history count). */
-export async function matchFoods(sb: SupabaseClient, query: string): Promise<{ candidates: Candidate[]; strong: boolean }> {
+/**
+ * Top three foods for a name, by the same search as the Search screen (so your own foods and
+ * history count). `tier` says how good the best match is: 1 = every word, 2 = some, 3 = spelling only.
+ */
+export async function matchFoods(sb: SupabaseClient, query: string): Promise<{ candidates: Candidate[]; strong: boolean; tier: number | null }> {
   const { data } = await sb.rpc('search_foods', { q: query, lim: 3 });
-  const rows = (data as { id: string; score: number; use_count: number | null; last_grams: number | null }[]) ?? [];
-  if (!rows.length) return { candidates: [], strong: false };
+  const rows = (data as { id: string; score: number; use_count: number | null; last_grams: number | null; tier?: number | null }[]) ?? [];
+  if (!rows.length) return { candidates: [], strong: false, tier: null };
   const { data: full } = await sb.from('foods').select(CANDIDATE_COLS).in('id', rows.map((r) => r.id));
   const byId = new Map((full ?? []).map((f) => [f.id as string, f]));
   const candidates = rows
@@ -88,9 +91,10 @@ export async function matchFoods(sb: SupabaseClient, query: string): Promise<{ c
     })
     .filter((c): c is Candidate => c != null);
   const top = rows[0];
-  // An obvious match: something you've logged before, or a strong name match.
-  const strong = (top.use_count ?? 0) > 0 || Number(top.score) >= 0.6;
-  return { candidates, strong };
+  const tier = top.tier == null ? 1 : Number(top.tier);
+  // An obvious match: something you've logged before, or every word matched well.
+  const strong = (top.use_count ?? 0) > 0 || (tier === 1 && Number(top.score) >= 0.3);
+  return { candidates, strong, tier };
 }
 
 /** Grams for a count ("2 eggs") from household measures: one that names the noun, else the first listed. */

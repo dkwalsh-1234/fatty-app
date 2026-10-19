@@ -29,6 +29,47 @@ export function weightOn(weighIns: WeighIn[], date: string, tz: string): number 
   return best ? best.weight_kg : null;
 }
 
+/**
+ * Today's energy target, worked out one way for every screen (Today, the ring, the widget, the
+ * target breakdown, the Goal preview and onboarding). Gathers the inputs: the latest weigh-in on or
+ * before the day, that day's burn (one app, never summed), the 7 days before it for Stable mode,
+ * and a typed target, then calls computeTarget. `goal` can be a draft, for previews.
+ * Returns null until the profile has what the formula needs.
+ */
+export function targetFor(opts: {
+  date: string;
+  profile: Pick<Profile, 'birth_date' | 'sex' | 'height_cm' | 'activity_level' | 'time_zone' | 'burn_source' | 'stable_mode' | 'energy_target_override_kcal'>;
+  weighIns: WeighIn[];
+  burn: BurnRow[];
+  goal: { targetKg: number; targetDate: string } | null;
+  /** Weight to use when there's no weigh-in yet (the goal's start weight). */
+  fallbackKg?: number | null;
+  /** Replaces the profile's typed target (a draft on the Goal screen). */
+  overrideKcal?: number | null;
+}): TargetBreakdown | null {
+  const { date, profile, burn } = opts;
+  const currentKg = weightOn(opts.weighIns, date, profile.time_zone) ?? opts.fallbackKg ?? null;
+  if (!profile.birth_date || !profile.sex || !profile.height_cm || !profile.activity_level || !currentKg) return null;
+  const last7: BurnDay[] = [];
+  for (let i = 1; i <= 7; i++) {
+    const b = pickBurn(burn, addDays(date, -i), profile.burn_source);
+    if (b) last7.push(b);
+  }
+  return computeTarget({
+    today: date,
+    birthDate: profile.birth_date,
+    sex: profile.sex,
+    heightCm: profile.height_cm,
+    activityLevel: profile.activity_level,
+    currentKg,
+    goal: opts.goal,
+    burnToday: pickBurn(burn, date, profile.burn_source),
+    burnLast7: last7,
+    stableMode: profile.stable_mode,
+    overrideKcal: opts.overrideKcal !== undefined ? opts.overrideKcal : profile.energy_target_override_kcal,
+  });
+}
+
 export interface TargetRowView {
   info: NutrientInfo;
   value: number | null;
@@ -100,38 +141,21 @@ export function buildDay(opts: {
   };
   const eatenTotal = energyIn(kj, unit);
 
-  // Energy target for this day.
+  // Energy target for this day: the one function every screen uses.
   const currentKg = weightOn(weighIns, date, profile.time_zone) ?? goal?.start_weight_kg ?? null;
-  let target: TargetBreakdown | null = null;
-  if (profile.birth_date && profile.sex && profile.height_cm && profile.activity_level && currentKg) {
-    const last7: BurnDay[] = [];
-    for (let i = 1; i <= 7; i++) {
-      const b = pickBurn(burn, addDays(date, -i), profile.burn_source);
-      if (b) last7.push(b);
-    }
-    target = computeTarget({
-      today: date,
-      birthDate: profile.birth_date,
-      sex: profile.sex,
-      heightCm: profile.height_cm,
-      activityLevel: profile.activity_level,
-      currentKg,
-      goal: goal ? { targetKg: goal.target_weight_kg, targetDate: goal.target_date } : null,
-      burnToday: pickBurn(burn, date, profile.burn_source),
-      burnLast7: last7,
-      stableMode: profile.stable_mode,
-      overrideKcal: profile.energy_target_override_kcal,
-    });
-  }
+  const target = targetFor({
+    date,
+    profile,
+    weighIns,
+    burn,
+    goal: goal ? { targetKg: goal.target_weight_kg, targetDate: goal.target_date } : null,
+    fallbackKg: goal?.start_weight_kg,
+  });
   const ring = target
     ? {
-        target: kcalIn(target.target, unit),
+        target: kcalIn(target.rounded, unit),
         base: kcalIn(target.base, unit),
-        activity: (target.activitySource === 'override'
-          ? 'none'
-          : target.activitySource === 'estimated'
-            ? 'estimated'
-            : 'measured') as ActivityKind,
+        activity: (target.own ? 'none' : target.activityKind === 'estimated' ? 'estimated' : 'measured') as ActivityKind,
         activityAmount: kcalIn(target.activity, unit),
       }
     : null;
