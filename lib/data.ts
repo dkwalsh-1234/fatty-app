@@ -247,6 +247,9 @@ export interface SearchResult {
   last_grams: number | null;
   last_unit: 'g' | 'ml' | null;
   last_amount: number | null;
+  score: number | null;
+  /** 1 = every word matched, 2 = some words, 3 = similar spelling only. */
+  tier: 1 | 2 | 3 | null;
 }
 
 export async function searchFoods(q: string, limit = 30): Promise<SearchResult[]> {
@@ -259,6 +262,8 @@ export async function searchFoods(q: string, limit = 30): Promise<SearchResult[]
     total_weight_g: num(r.total_weight_g),
     last_grams: num(r.last_grams),
     last_amount: num(r.last_amount),
+    score: num(r.score),
+    tier: r.tier == null ? null : (Number(r.tier) as 1 | 2 | 3),
   }));
 }
 

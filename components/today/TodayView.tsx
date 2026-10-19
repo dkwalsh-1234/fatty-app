@@ -4,15 +4,18 @@
 
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import { EnergyRing, MacroLegend, RingCaption } from '@/design/components/EnergyRing';
+import { EnergyRing, MacroLegend } from '@/design/components/EnergyRing';
 import { TargetBar } from '@/design/components/TargetBar';
 import { tokens } from '@/design/tokens/tokens';
 import { MEAL_LABEL, shortDate } from '@/lib/dates';
+import { captionParts } from '@/lib/caption';
 import { entryEnergyKj, type DayView } from '@/lib/day';
+import type { ActivityLevel } from '@/lib/target';
 import { amountText, energyIn, grams, int, kg, one, saltText, unitCaps, unitLabel } from '@/lib/format';
 import { NUTRIENT_BY_KEY, type NutrientKey } from '@/lib/nutrients';
 import type { EnergyUnit, LogEntry } from '@/lib/types';
-import { DashedChip, Icon, MacroDot, MoreDots } from '../ui';
+import { PRECISION_NOTE, TargetBreakdownCard } from '../app/TargetBreakdown';
+import { DashedChip, Icon, MacroDot, MoreDots, Sheet } from '../ui';
 
 const P = tokens.color.pine;
 
@@ -24,12 +27,13 @@ export interface TodayHandlers {
   logHref: (route: 'scan' | 'photo' | 'search' | 'type') => string;
 }
 
-export function TodayView({ day, title, capsDate, weightKg, unit, missingKeys, handlers, notice }: {
+export function TodayView({ day, title, capsDate, weightKg, unit, activityLevel, missingKeys, handlers, notice }: {
   day: DayView;
   title: string;
   capsDate: string;
   weightKg: number | null;
   unit: EnergyUnit;
+  activityLevel: ActivityLevel | null;
   /** Nutrients whose gaps get a chip on log rows: energy plus any with a target. */
   missingKeys: NutrientKey[];
   handlers: TodayHandlers;
@@ -37,7 +41,7 @@ export function TodayView({ day, title, capsDate, weightKg, unit, missingKeys, h
 }) {
   return (
     <div className="mx-auto w-full max-w-[480px] pb-dock">
-      <Hero day={day} title={title} capsDate={capsDate} weightKg={weightKg} unit={unit} onWeigh={handlers.onWeigh} onMenu={handlers.onMenu} />
+      <Hero day={day} title={title} capsDate={capsDate} weightKg={weightKg} unit={unit} activityLevel={activityLevel} onWeigh={handlers.onWeigh} onMenu={handlers.onMenu} />
       <div className="flex flex-col gap-2.5 px-4 pt-4">
         {notice}
         <TargetsCard day={day} unit={unit} />
@@ -52,16 +56,18 @@ export function TodayView({ day, title, capsDate, weightKg, unit, missingKeys, h
   );
 }
 
-function Hero({ day, title, capsDate, weightKg, unit, onWeigh, onMenu }: {
+function Hero({ day, title, capsDate, weightKg, unit, activityLevel, onWeigh, onMenu }: {
   day: DayView;
   title: string;
   capsDate: string;
   weightKg: number | null;
   unit: EnergyUnit;
+  activityLevel: ActivityLevel | null;
   onWeigh: () => void;
   onMenu: () => void;
 }) {
   const [grams, setGrams] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
   const ring = day.ring;
   return (
     <section className="min-h-[488px] rounded-b-band bg-band pb-6 text-pine-mint">
@@ -117,7 +123,7 @@ function Hero({ day, title, capsDate, weightKg, unit, onWeigh, onMenu }: {
       </div>
 
       <div className="mt-3 flex flex-col items-center gap-1.5 px-4 text-[13px] text-pine-mint2 tnum">
-        {ring && <RingCaption target={ring.target} activityKcal={ring.activityAmount} activity={ring.activity} />}
+        {day.target && <TargetCaption day={day} unit={unit} onOpen={() => setHowOpen(true)} />}
         <Link href="/goal" className="flex min-h-6 items-center gap-2 text-inherit no-underline">
           <HaloGlyph progress={day.goal?.progress ?? 0} />
           {day.goal ? (
@@ -131,9 +137,58 @@ function Hero({ day, title, capsDate, weightKg, unit, onWeigh, onMenu }: {
         <div className="flex flex-wrap justify-center gap-x-3.5 gap-y-1 pt-1.5">
           <MacroLegend eaten={day.eaten} />
         </div>
-        {ring?.activity === 'estimated' && <span className="text-[12px] text-pine-mint3">Activity estimated from your activity level</span>}
       </div>
+      {day.target && (
+        <Sheet open={howOpen} onClose={() => setHowOpen(false)} label="How today's target is worked out">
+          <div className="flex flex-col gap-3 pb-2 text-ink">
+            <h2 className="pt-1 text-center text-[17px] font-semibold">How today&apos;s target is worked out</h2>
+            <TargetBreakdownCard
+              t={day.target}
+              unit={unit}
+              activityLevel={activityLevel}
+              kgToGo={day.goal ? day.goal.targetKg - day.goal.currentKg : null}
+            />
+            <p className="mx-1 text-[13px] leading-snug text-ink2">{PRECISION_NOTE}</p>
+          </div>
+        </Sheet>
+      )}
     </section>
+  );
+}
+
+/**
+ * Under the ring: the parts of today's target, which add up to the centre's number (before
+ * rounding to 10). Lime marks the activity term, as on the ring's rail. Tap for the breakdown.
+ */
+function TargetCaption({ day, unit, onOpen }: { day: DayView; unit: EnergyUnit; onOpen: () => void }) {
+  const c = captionParts(day.target!, unit);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${c.text}. How today's target is worked out`}
+      className="flex min-h-11 max-w-full items-center gap-2 whitespace-nowrap border-0 bg-transparent px-1 text-[13px] text-pine-mint2 tnum"
+    >
+      {!c.own && (
+        <svg width="18" height="4" viewBox="0 0 18 4" aria-hidden="true" className="shrink-0">
+          <line x1="2" y1="2" x2="16" y2="2" stroke={P.activityRail} strokeWidth="4" strokeLinecap="round" strokeDasharray={c.kind === 'estimated' ? '0 7' : undefined} />
+        </svg>
+      )}
+      {c.own ? (
+        <span className="text-pine-mint">{c.text}</span>
+      ) : (
+        <span className="truncate">
+          <span className="font-medium text-pine-mint">{c.resting}</span> resting
+          {c.goal && (
+            <>
+              {' '}
+              {c.goal.sign} <span className="font-medium text-pine-mint">{c.goal.value}</span> goal
+            </>
+          )}{' '}
+          <span className="font-semibold text-pine-lime">+ {c.active}</span> active{c.suffix}
+        </span>
+      )}
+    </button>
   );
 }
 

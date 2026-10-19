@@ -7,12 +7,13 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { AiKeyInfo } from "@/components/app/AppProvider";
 import { AiKeyPicker } from "@/components/forms/AiKeyPicker";
-import { evaluateGoal, GoalForm, type GoalValues } from "@/components/forms/GoalForm";
+import { evaluateGoal, GoalForm, type GoalContext, type GoalValues } from "@/components/forms/GoalForm";
 import { ProfileForm, profileErrors, type ProfileValues } from "@/components/forms/ProfileForm";
 import { cx, Dock, DockButton, Notice, RoundButton, Screen } from "@/components/ui";
 import { KEY_SCREEN_COPY } from "@/lib/ai/config";
 import { addDays, localDate } from "@/lib/dates";
 import { addWeighIn, saveGoal, saveProfile } from "@/lib/data";
+import { targetFor } from "@/lib/day";
 import type { WarningKey } from "@/lib/target";
 import type { Profile } from "@/lib/types";
 
@@ -36,27 +37,34 @@ export function Onboarding({ profile }: { profile: Profile }) {
   const [aiKey, setAiKey] = useState<AiKeyInfo | null>(null);
 
   const currentKg = Number(String(p.weight_kg).replace(",", "."));
-  const evaluation = useMemo(
-    () =>
-      p.sex && p.activity_level && p.birth_date
-        ? evaluateGoal(
-            g,
-            {
-              birthDate: p.birth_date,
-              sex: p.sex,
-              heightCm: Number(p.height_cm),
-              activityLevel: p.activity_level,
-              currentKg,
-              today,
-              ratePct: profile.warn_rate_pct_per_week,
-              floorKcal: profile.warn_floor_kcal,
-              unit: profile.energy_unit,
-            },
-            dismissed,
-          )
-        : null,
-    [g, p, currentKg, today, dismissed, profile],
-  );
+  // The same target function as Today. There's no Health Connect burn yet, so activity is estimated.
+  const goalCtx = useMemo<GoalContext | null>(() => {
+    if (!p.sex || !p.activity_level || !p.birth_date) return null;
+    const draftProfile = {
+      birth_date: p.birth_date,
+      sex: p.sex,
+      height_cm: Number(p.height_cm),
+      activity_level: p.activity_level,
+      time_zone: tz,
+      burn_source: null,
+      stable_mode: false,
+      energy_target_override_kcal: null,
+    };
+    const weighIns = [{ id: "draft", measured_at: new Date().toISOString(), weight_kg: currentKg, source: "manual" }];
+    const tf: GoalContext["targetFor"] = (goal, overrideKcal) =>
+      targetFor({ date: today, profile: draftProfile, weighIns, burn: [], goal, fallbackKg: currentKg, overrideKcal });
+    return {
+      sex: p.sex,
+      currentKg,
+      today,
+      ratePct: profile.warn_rate_pct_per_week,
+      floorKcal: profile.warn_floor_kcal,
+      unit: profile.energy_unit,
+      targetFor: tf,
+      wholeDayFor: tf,
+    };
+  }, [p, currentKg, today, tz, profile]);
+  const evaluation = useMemo(() => (goalCtx ? evaluateGoal(g, goalCtx, dismissed) : null), [g, goalCtx, dismissed]);
 
   async function next() {
     setError(null);
@@ -136,24 +144,14 @@ export function Onboarding({ profile }: { profile: Profile }) {
           <ProfileForm value={p} onChange={setP} withWeight />
         </>
       )}
-      {step === 1 && evaluation && (
+      {step === 1 && evaluation && goalCtx && (
         <GoalForm
           value={g}
           onChange={(v) => {
             if (v.target_kg !== g.target_kg || v.target_date !== g.target_date) setDismissed([]);
             setG(v);
           }}
-          ctx={{
-            birthDate: p.birth_date,
-            sex: p.sex || "female",
-            heightCm: Number(p.height_cm),
-            activityLevel: p.activity_level || "sitting",
-            currentKg,
-            today,
-            ratePct: profile.warn_rate_pct_per_week,
-            floorKcal: profile.warn_floor_kcal,
-            unit: profile.energy_unit,
-          }}
+          ctx={goalCtx!}
           evaluation={evaluation}
           onContinueAnyway={(k) => setDismissed((d) => [...d, k])}
         />

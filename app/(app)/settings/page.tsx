@@ -42,7 +42,7 @@ export default function SettingsPage() {
     () => buildDay({ date: app.today, entries: [], profile: p, goal: app.goal, weighIns: app.weighIns, burn: app.burn, targets: [] }),
     [app.today, p, app.goal, app.weighIns, app.burn],
   );
-  const conflict = today.target ? targetsConflict(app.targets, today.target.target) : null;
+  const conflict = today.target ? targetsConflict(app.targets, today.target.rounded) : null;
 
   return (
     <Screen>
@@ -76,7 +76,7 @@ export default function SettingsPage() {
         <Row
           label="Daily energy target"
           sub={p.energy_target_override_kcal ? 'Your own number' : 'Worked out from your body, activity and goal'}
-          value={today.target ? `${int(kcalIn(today.target.target, p.energy_unit))} ${unitLabel(p.energy_unit)}` : '–'}
+          value={today.target ? `${int(kcalIn(today.target.rounded, p.energy_unit))} ${unitLabel(p.energy_unit)}` : '–'}
           href="/goal"
         />
         <div className="flex items-center justify-between gap-3 border-t border-separator pt-3">
