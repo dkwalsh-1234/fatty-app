@@ -13,7 +13,7 @@ import { KEY_SCREEN_COPY } from '@/lib/ai/config';
 import { localDate } from '@/lib/dates';
 import { devFixtures, devProfile } from './fixtures';
 
-/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | goal | settings | aikey | confirm (&text=dev-unmatched or dev-mixed); &key=1 gives the sample account a saved AI key */
+/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | goal | settings | aikey | confirm (&text=dev-unmatched, dev-mixed or dev-split); &key=1 gives the sample account a saved AI key */
 type ScreenName = 'today' | 'sheet' | 'sheet-ml' | 'sheet-meal' | 'goal' | 'settings' | 'aikey' | 'confirm';
 
 export function DevPreview() {
@@ -64,6 +64,20 @@ if (typeof window !== 'undefined') {
     carbs_g: 5.1, sugars_g: 2.4, fibre_g: 0.4, sodium_mg: 40, last_grams: null,
   };
   sessionStorage.setItem('fatty:draft:text:dev-unmatched', JSON.stringify({ kind: 'text', text: '8 oz flat white with oat milk', items: [item('u1', 'Flat white (oat milk)', 237, [])] }));
+  const espresso = { ...flatWhite, id: 'esp', name: 'Coffee, espresso, single shot', energy_kj: 30, protein_g: 0.1, fat_g: 0.1, carbs_g: 0.3, sugars_g: 0, sodium_mg: 5 };
+  const chai = { ...flatWhite, id: 'chai', name: 'Chai latte', source: 'ai', energy_kj: 290 };
+  sessionStorage.setItem(
+    'fatty:draft:text:dev-split',
+    JSON.stringify({
+      kind: 'text',
+      text: '8 oz flat white with oat milk, chai latte',
+      items: [
+        { ...item('s1', 'Coffee, espresso', 28, [espresso]), splitFrom: 'Flat white (oat milk)' },
+        { ...item('s2', 'Oat beverage', 199, []), splitFrom: 'Flat white (oat milk)' },
+        item('s3', 'Chai latte', 250, [chai]),
+      ],
+    }),
+  );
   sessionStorage.setItem('fatty:draft:text:dev-mixed', JSON.stringify({ kind: 'text', text: '8 oz flat white with oat milk, a mystery muffin', items: [item('m1', 'Flat white (oat milk)', 227, [flatWhite]), item('m2', 'Mystery muffin', 110, [])] }));
 }
 

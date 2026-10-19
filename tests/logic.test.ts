@@ -11,7 +11,9 @@ import { buildDay, pickBurn, targetFor } from '@/lib/day';
 import { saltText } from '@/lib/format';
 import { emptyPer100, scale, sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { parseSearch, parseText } from '@/lib/parse';
+import { cleanEstimate, cleanResolve, componentsForGrams, isWeakMatch } from '@/lib/resolution';
 import { mapOffProduct } from '@/lib/sources/off';
+import { mapOffAuRow } from '@/lib/sources/off-au';
 import { checkGoal, computeTarget, restingKcal, roundTarget, targetsConflict } from '@/lib/target';
 import type { BurnRow, Food, Goal, LogEntry, Profile } from '@/lib/types';
 import { widgetSummary } from '@/lib/widget';
@@ -471,5 +473,85 @@ describe('Today and the widget', () => {
     expect(toPer100({ energy_kj: '1620', sat_fat_g: null, protein_g: 0 } as unknown as Record<string, unknown>)).toMatchObject({ energy_kj: 1620, sat_fat_g: null, protein_g: 0 });
     const f = { energy_kj: 100 } as Food;
     expect(scale(f, 50).energy_kj).toBe(50);
+  });
+});
+
+describe('AI fallbacks (item 4 and Q5)', () => {
+  it('asks the AI only when search found nothing or matched on spelling alone', () => {
+    expect(isWeakMatch(0, null)).toBe(true);
+    expect(isWeakMatch(3, 3)).toBe(true);
+    expect(isWeakMatch(3, 2)).toBe(false);
+    expect(isWeakMatch(1, 1)).toBe(false);
+  });
+
+  it('keeps three distinct phrasings and sensible components', () => {
+    const r = cleanResolve({
+      phrasings: [' coffee, flat white ', 'Coffee, flat white', 'coffee, latte', 'a', 'b'],
+      components: [{ name: 'coffee, espresso', grams: 30 }, { name: '', grams: 10 }, { name: 'oat beverage', grams: -5 }],
+    });
+    expect(r.phrasings).toEqual(['coffee, flat white', 'coffee, latte', 'a']);
+    expect(r.components).toEqual([{ name: 'coffee, espresso', grams: 30 }]);
+  });
+
+  it('scales cached components to the amount logged', () => {
+    const parts = [{ name: 'coffee, espresso', grams: 30 }, { name: 'oat beverage', grams: 210 }];
+    // "8 oz flat white with oat milk": 227 g.
+    const scaled = componentsForGrams(parts, 227);
+    expect(scaled).toEqual([{ name: 'coffee, espresso', grams: 28 }, { name: 'oat beverage', grams: 199 }]);
+    expect(componentsForGrams(parts, null)).toEqual(parts);
+  });
+
+  it('drops impossible AI estimate values and needs energy', () => {
+    const base = { name: 'Chai latte', is_liquid: true, confidence: 'medium' as const };
+    const v = cleanEstimate({
+      ...base,
+      per_100g: { energy_kj: 290.04, protein_g: 3, fat_g: 3, sat_fat_g: 5, trans_fat_g: null, carbs_g: 9, sugars_g: 120, fibre_g: -1, sodium_mg: 40 },
+    });
+    expect(v).toMatchObject({ energy_kj: 290, sat_fat_g: 3, sugars_g: null, fibre_g: null, sodium_mg: 40 });
+    expect(cleanEstimate({ ...base, per_100g: { ...emptyPer100(), energy_kj: 9000 } as never })).toBeNull();
+  });
+
+  it('counts AI-estimated values in totals so they can be flagged', () => {
+    const p = { ...emptyPer100(), energy_kj: 1000, protein_g: 10 };
+    const t = sumEntries([
+      { per100: p, grams: 100, ai: true },
+      { per100: p, grams: 50 },
+    ]);
+    expect(t.values.energy_kj).toBe(1500);
+    expect(t.ai.energy_kj).toBe(1);
+    expect(t.ai.fat_g).toBe(0);
+    expect(t.missing.fat_g).toBe(2);
+  });
+});
+
+describe('Open Food Facts, Australian products (Q3)', () => {
+  const row = (o: Record<string, string>) => ({
+    code: '9300652010794', product_name: 'Weet-Bix', brands: 'Sanitarium', quantity: '575 g', serving_size: '30 g',
+    serving_quantity: '30', product_quantity: '575', 'energy-kj_100g': '1480', 'energy-kcal_100g': '', energy_100g: '1480',
+    proteins_100g: '12.1', fat_100g: '1.4', 'saturated-fat_100g': '0.3', 'trans-fat_100g': '', carbohydrates_100g: '67',
+    sugars_100g: '2.8', fiber_100g: '11.3', sodium_100g: '0.27', last_modified_t: '1700000000', ...o,
+  });
+
+  it('maps a product like a barcode lookup, with a slim raw record', () => {
+    const m = mapOffAuRow(row({}));
+    expect('food' in m).toBe(true);
+    if (!('food' in m)) return;
+    expect(m.food).toMatchObject({ source: 'off', source_id: '9300652010794', barcode: '9300652010794', name: 'Weet-Bix', brand: 'Sanitarium', energy_kj: 1480, sodium_mg: 270, serving_g: 30, pack_g: 575 });
+    expect(m.food.raw).toEqual({ code: '9300652010794', quantity: '575 g', serving_size: '30 g', last_modified_t: 1700000000 });
+  });
+
+  it('drops impossible values and kcal typed as kJ', () => {
+    expect(mapOffAuRow(row({ fat_100g: '140' }))).toEqual({ drop: 'impossible value' });
+    expect(mapOffAuRow(row({ 'energy-kj_100g': '354', energy_100g: '354' }))).toEqual({ drop: 'energy far below its macros' });
+  });
+
+  it('leaves a 0 serving or pack size blank', () => {
+    const m = mapOffAuRow(row({ serving_quantity: '0', product_quantity: '0' }));
+    expect('food' in m && [m.food.serving_g, m.food.pack_g]).toEqual([null, null]);
+  });
+
+  it('keeps the product but drops a part bigger than its whole', () => {
+    const m = mapOffAuRow(row({ 'saturated-fat_100g': '9' }));
+    expect('food' in m && m.food.sat_fat_g).toBeNull();
   });
 });

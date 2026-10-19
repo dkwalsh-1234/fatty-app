@@ -9,7 +9,7 @@ import { TargetBar } from '@/design/components/TargetBar';
 import { tokens } from '@/design/tokens/tokens';
 import { MEAL_LABEL, shortDate } from '@/lib/dates';
 import { captionParts } from '@/lib/caption';
-import { entryEnergyKj, type DayView } from '@/lib/day';
+import { entryEnergyKj, isAiEstimate, type DayView } from '@/lib/day';
 import type { ActivityLevel } from '@/lib/target';
 import { amountText, energyIn, grams, int, kg, one, saltText, unitCaps, unitLabel } from '@/lib/format';
 import { NUTRIENT_BY_KEY, type NutrientKey } from '@/lib/nutrients';
@@ -249,6 +249,7 @@ function TargetsCard({ day, unit }: { day: DayView; unit: EnergyUnit }) {
             max={r.max}
             colour={r.info.colour ? `var(--cc-${r.info.colour})` : undefined}
             incomplete={r.incomplete}
+            aiEstimates={r.ai}
             format={isEnergy || isSodium ? int : grams}
           />
         );
@@ -269,6 +270,7 @@ function MoreNutrients({ day }: { day: DayView }) {
             <span className="flex items-center gap-2 text-base font-medium">
               Sodium
               {sodium.incomplete > 0 && <DashedChip>incomplete · {sodium.incomplete}</DashedChip>}
+              {sodium.ai > 0 && <DashedChip title="Includes AI estimates, not values from data">AI est. · {sodium.ai}</DashedChip>}
             </span>
             <span className="text-[21px] font-medium tnum">
               {sodium.value == null ? '–' : int(sodium.value)} mg{' '}
@@ -286,6 +288,7 @@ function MoreNutrients({ day }: { day: DayView }) {
                 {n.info.colour && <MacroDot colour={n.info.colour} size={7} />}
                 {n.info.label === 'Dietary fibre' ? 'Fibre' : n.info.label}
                 {n.incomplete > 0 && <DashedChip>incomplete · {n.incomplete}</DashedChip>}
+                {n.ai > 0 && <DashedChip title="Includes AI estimates, not values from data">AI est. · {n.ai}</DashedChip>}
               </span>
               <span className="text-[19px] font-medium tnum">{n.value == null ? '–' : `${n.value >= 100 ? int(n.value) : one(n.value)} g`}</span>
             </div>
@@ -310,6 +313,7 @@ function LogGroup({ group, unit, missingKeys, onEntry, onMenu }: {
         <span className="flex-1 text-[17px] font-semibold">{label}</span>
         {group.entries.length > 0 && (
           <span className="text-sm text-ink2 tnum">
+            {group.ai > 0 && group.energyKj != null ? '≈ ' : ''}
             {group.energyKj == null ? '–' : `${int(energyIn(group.energyKj, unit))} ${unitLabel(unit)}`}
             {group.incomplete > 0 && ' +'}
           </span>
@@ -340,6 +344,7 @@ function LogGroup({ group, unit, missingKeys, onEntry, onMenu }: {
             >
               <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[15px] text-ink">
                 <span className="truncate">{e.food_name_snapshot}</span>
+                {isAiEstimate(e) && <DashedChip title="Values are an AI estimate, not from a food database">AI est.</DashedChip>}
                 {gaps.map((k) => (
                   <DashedChip key={k} title={`This food has no value for ${NUTRIENT_BY_KEY[k].label.toLowerCase()}`}>
                     {NUTRIENT_BY_KEY[k].short} –

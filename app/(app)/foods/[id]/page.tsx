@@ -27,6 +27,7 @@ const SOURCE_LINE: Record<Food['source'], string> = {
   off: 'Open Food Facts (Open Database License)',
   ausnut: 'FSANZ, AUSNUT 2023',
   afcd: 'FSANZ, Australian Food Composition Database',
+  ai: 'AI estimate: values from your AI provider, not a database',
 };
 
 export default function FoodPage() {

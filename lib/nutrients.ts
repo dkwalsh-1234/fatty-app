@@ -87,30 +87,38 @@ export interface Totals {
   values: Per100;
   /** How many entries had this nutrient missing. A total is complete only when this is 0. */
   missing: Record<NutrientKey, number>;
+  /** How many entries' values for this nutrient are an AI estimate (Q5). Flagged like missing ones. */
+  ai: Record<NutrientKey, number>;
   count: number;
 }
+
+const zeroes = () => Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0])) as Record<NutrientKey, number>;
 
 export function emptyTotals(): Totals {
   return {
     values: emptyPer100(),
-    missing: Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, 0])) as Record<NutrientKey, number>,
+    missing: zeroes(),
+    ai: zeroes(),
     count: 0,
   };
 }
 
-/** Add one entry (already scaled to its grams) to running totals. */
-export function addTo(t: Totals, amount: Per100): Totals {
-  const next: Totals = { values: { ...t.values }, missing: { ...t.missing }, count: t.count + 1 };
+/** Add one entry (already scaled to its grams) to running totals. `ai`: its values are an AI estimate. */
+export function addTo(t: Totals, amount: Per100, ai = false): Totals {
+  const next: Totals = { values: { ...t.values }, missing: { ...t.missing }, ai: { ...t.ai }, count: t.count + 1 };
   for (const k of NUTRIENT_KEYS) {
     const v = amount[k];
     if (v == null) next.missing[k] += 1;
-    else next.values[k] = (next.values[k] ?? 0) + v;
+    else {
+      next.values[k] = (next.values[k] ?? 0) + v;
+      if (ai) next.ai[k] += 1;
+    }
   }
   return next;
 }
 
-export function sumEntries(entries: { per100: Per100; grams: number }[]): Totals {
-  return entries.reduce((t, e) => addTo(t, scale(e.per100, e.grams)), emptyTotals());
+export function sumEntries(entries: { per100: Per100; grams: number; ai?: boolean }[]): Totals {
+  return entries.reduce((t, e) => addTo(t, scale(e.per100, e.grams), e.ai), emptyTotals());
 }
 
 /** Australian labels list sodium; salt is shown beside it. salt g = sodium mg × 2.5 / 1000. */

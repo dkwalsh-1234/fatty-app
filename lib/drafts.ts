@@ -42,6 +42,10 @@ export interface DraftItem {
   /** "2 × egg" when converted from a count. */
   note: string | null;
   candidates: Candidate[];
+  /** How well search matched (1 every word, 2 some, 3 spelling only); null when nothing matched. */
+  tier?: number | null;
+  /** Set when the AI split a mixed drink or dish into parts: what it was split from. */
+  splitFrom?: string | null;
 }
 
 export interface Draft {
@@ -58,6 +62,30 @@ const CANDIDATE_COLS =
 
 const toNum = (v: unknown) => (v == null ? null : Number(v));
 
+function toCandidate(f: Record<string, unknown>, lastGrams: unknown): Candidate {
+  return {
+    ...(f as unknown as Candidate),
+    density_g_per_ml: toNum(f.density_g_per_ml),
+    serving_g: toNum(f.serving_g),
+    energy_kj: toNum(f.energy_kj),
+    protein_g: toNum(f.protein_g),
+    fat_g: toNum(f.fat_g),
+    sat_fat_g: toNum(f.sat_fat_g),
+    trans_fat_g: toNum(f.trans_fat_g),
+    carbs_g: toNum(f.carbs_g),
+    sugars_g: toNum(f.sugars_g),
+    fibre_g: toNum(f.fibre_g),
+    sodium_mg: toNum(f.sodium_mg),
+    last_grams: toNum(lastGrams),
+  };
+}
+
+/** One food as a candidate, e.g. an AI estimate just created. */
+export async function candidateById(sb: SupabaseClient, id: string): Promise<Candidate | null> {
+  const { data } = await sb.from('foods').select(CANDIDATE_COLS).eq('id', id).maybeSingle();
+  return data ? toCandidate(data as Record<string, unknown>, null) : null;
+}
+
 /**
  * Top three foods for a name, by the same search as the Search screen (so your own foods and
  * history count). `tier` says how good the best match is: 1 = every word, 2 = some, 3 = spelling only.
@@ -71,23 +99,7 @@ export async function matchFoods(sb: SupabaseClient, query: string): Promise<{ c
   const candidates = rows
     .map((r) => {
       const f = byId.get(r.id);
-      if (!f) return null;
-      const c: Candidate = {
-        ...(f as unknown as Candidate),
-        density_g_per_ml: toNum(f.density_g_per_ml),
-        serving_g: toNum(f.serving_g),
-        energy_kj: toNum(f.energy_kj),
-        protein_g: toNum(f.protein_g),
-        fat_g: toNum(f.fat_g),
-        sat_fat_g: toNum(f.sat_fat_g),
-        trans_fat_g: toNum(f.trans_fat_g),
-        carbs_g: toNum(f.carbs_g),
-        sugars_g: toNum(f.sugars_g),
-        fibre_g: toNum(f.fibre_g),
-        sodium_mg: toNum(f.sodium_mg),
-        last_grams: toNum(r.last_grams),
-      };
-      return c;
+      return f ? toCandidate(f as Record<string, unknown>, r.last_grams) : null;
     })
     .filter((c): c is Candidate => c != null);
   const top = rows[0];
@@ -121,12 +133,13 @@ async function suggestedGrams(sb: SupabaseClient, foodId: string, aiGrams: numbe
 }
 
 let seq = 0;
-const key = () => `i${Date.now().toString(36)}${(seq++).toString(36)}`;
+export const newKey = () => `i${Date.now().toString(36)}${(seq++).toString(36)}`;
+const key = newKey;
 
 export async function draftFromPhoto(sb: SupabaseClient, ai: MealPhotoResult): Promise<DraftItem[]> {
   return Promise.all(
     ai.items.map(async (it) => {
-      const { candidates } = await matchFoods(sb, it.name);
+      const { candidates, tier } = await matchFoods(sb, it.name);
       let grams = Math.max(1, Math.round(it.grams));
       let note: string | null = null;
       if (it.suggested && candidates[0]) ({ grams, note } = await suggestedGrams(sb, candidates[0].id, grams));
@@ -140,6 +153,7 @@ export async function draftFromPhoto(sb: SupabaseClient, ai: MealPhotoResult): P
         suggested: it.suggested,
         note,
         candidates,
+        tier,
       };
     }),
   );
@@ -150,7 +164,7 @@ export async function draftFromText(sb: SupabaseClient, items: (TextItem | (Text
   return Promise.all(
     items.map(async (it) => {
       const text = it.text;
-      const { candidates } = await matchFoods(sb, text);
+      const { candidates, tier } = await matchFoods(sb, text);
       const top = candidates[0];
       let grams: number | null = null;
       let note: string | null = null;
@@ -179,6 +193,7 @@ export async function draftFromText(sb: SupabaseClient, items: (TextItem | (Text
         suggested: false,
         note,
         candidates,
+        tier,
       };
     }),
   );

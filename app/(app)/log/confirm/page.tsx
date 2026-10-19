@@ -3,6 +3,8 @@
 // Meal confirm (design 05): one row per item with the matched food (swap for another candidate
 // or search), grams (tap for the amount sheet) and remove. Suggested hidden fats start unticked.
 // Save logs every row as its own entry, linked to the photo. Nothing is saved without this screen.
+// Items search couldn't match have already been through the AI fallback (lib/ai/resolve.ts); a
+// mixed drink or dish may arrive split into parts. An unmatched item can take an AI estimate (Q5).
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -12,6 +14,8 @@ import { BackButton, Button, cx, Dock, DockButton, Field, Icon, MacroDot, Notice
 import { signedPhotoUrl } from '@/lib/camera';
 import { MEAL_PHOTO_BUCKET } from '@/lib/config';
 import { DEFAULT_MEAL_BOUNDARIES, localTime, MEAL_LABEL, mealForTime, zonedToUtc, type Meal } from '@/lib/dates';
+import { PROVIDER_BY_ID } from '@/lib/ai/config';
+import { aiEstimate, AiCallError } from '@/lib/ai-fallback';
 import { getFood, saveMeal, type SearchResult } from '@/lib/data';
 import { useFoodSearch } from '@/lib/useFoodSearch';
 import type { Candidate, Draft } from '@/lib/drafts';
@@ -42,6 +46,8 @@ interface Row {
   suggested: boolean;
   on: boolean;
   note: string | null;
+  /** The AI split a mixed drink or dish into parts: what it was split from. */
+  splitFrom: string | null;
 }
 
 const fromCandidate = (c: Candidate): NonNullable<Row['food']> => ({
@@ -98,6 +104,7 @@ function Confirm() {
           suggested: i.suggested,
           on: !i.suggested,
           note: i.note,
+          splitFrom: i.splitFrom ?? null,
         })),
       );
     })().catch((e: Error) => setError(e.message));
@@ -237,13 +244,16 @@ function Confirm() {
               <div key={r.key} className={cx('flex min-h-14 items-center gap-1.5 border-t border-separator py-1', !r.on && 'opacity-50')}>
                 <span className="min-w-0 flex-1">
                   <span className={cx('line-clamp-2 block text-[15px] font-medium leading-snug', !r.on && 'line-through')}>{r.food!.name}</span>
-                  {(r.on && !r.grams) || r.confidence === 'low' || r.note || r.food!.name.toLowerCase() !== r.label.toLowerCase() ? (
-                    <span className={cx('block truncate text-[12px]', r.on && !r.grams ? 'text-warn-text' : 'text-ink2')}>
-                      {r.on && !r.grams
-                        ? 'Add an amount, or remove this item'
-                        : [r.food!.name.toLowerCase() !== r.label.toLowerCase() ? `for “${r.label}”` : null, r.note, r.confidence === 'low' ? 'low confidence' : null].filter(Boolean).join(' · ')}
-                    </span>
-                  ) : null}
+                  {(() => {
+                    if (r.on && !r.grams) return <span className="block truncate text-[12px] text-warn-text">Add an amount, or remove this item</span>;
+                    const sub = [
+                      r.food!.source === 'ai' ? 'AI estimate' : null,
+                      r.splitFrom ? `split by AI from “${r.splitFrom}”` : r.food!.name.toLowerCase() !== r.label.toLowerCase() ? `for “${r.label}”` : null,
+                      r.note,
+                      r.confidence === 'low' ? 'low confidence' : null,
+                    ].filter(Boolean);
+                    return sub.length ? <span className="block truncate text-[12px] text-ink2">{sub.join(' · ')}</span> : null;
+                  })()}
                 </span>
                 <button
                   type="button"
@@ -276,6 +286,7 @@ function Confirm() {
                   </span>
                   <span className="block text-[12px] leading-snug text-ink2 tnum">
                     {r.grams ? `≈ ${int(r.grams)} g · ` : ''}
+                    {r.splitFrom ? 'split by AI · ' : ''}
                     {r.on ? 'Search for a match or remove this item' : 'Removed'}
                   </span>
                 </span>
@@ -390,6 +401,8 @@ function Confirm() {
       <SwapSheet
         key={swapping?.key ?? 'none'}
         row={swapping}
+        // The last resort, for an item nothing matched, and only with an AI key.
+        estimateWith={swapping && !swapping.food && app.aiKey ? PROVIDER_BY_ID[app.aiKey.provider].name : null}
         onClose={() => setSwapping(null)}
         onPick={(food) => {
           if (!swapping) return;
@@ -415,12 +428,35 @@ function RemoveToggle({ row, onToggle }: { row: Row; onToggle: () => void }) {
   );
 }
 
-function SwapSheet({ row, onClose, onPick }: { row: Row | null; onClose: () => void; onPick: (f: NonNullable<Row['food']>) => void }) {
+function SwapSheet({ row, estimateWith, onClose, onPick }: {
+  row: Row | null;
+  /** Provider name when "Use an AI estimate" is offered. */
+  estimateWith: string | null;
+  onClose: () => void;
+  onPick: (f: NonNullable<Row['food']>) => void;
+}) {
   // Keyed by row, so the search box starts with that item's name.
   const [q, setQ] = useState(row?.query ?? '');
   const search = useFoodSearch(q, 12, !!row);
   const results = search.results ?? [];
   const busy = search.searching;
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState<{ message: string; settings: boolean } | null>(null);
+  const phrase = q.trim() || row?.label || '';
+  // Offered once search has nothing better than close spellings.
+  const offerEstimate = !!estimateWith && phrase.length >= 2 && !busy && (results.length === 0 || results[0].tier === 3);
+
+  async function estimate() {
+    setEstimating(true);
+    setEstimateError(null);
+    try {
+      onPick(fromCandidate(await aiEstimate(phrase)));
+    } catch (e) {
+      setEstimateError({ message: e instanceof Error ? e.message : "That didn't work.", settings: e instanceof AiCallError && e.settings });
+    } finally {
+      setEstimating(false);
+    }
+  }
 
   async function pickResult(r: SearchResult) {
     const f = await getFood(r.id);
@@ -460,6 +496,32 @@ function SwapSheet({ row, onClose, onPick }: { row: Row | null; onClose: () => v
             ))}
           </div>
         )}
+        {offerEstimate && (
+          <div className="rounded-card bg-raised px-4 py-2">
+            <button type="button" onClick={estimate} disabled={estimating} className="flex min-h-11 w-full items-center gap-2 border-0 bg-transparent p-0 text-left text-[16px] font-semibold text-accent">
+              {estimating ? 'Estimating…' : 'Use an AI estimate'}
+              {estimating && <Spinner label="Estimating" />}
+            </button>
+            <p className="pb-1 text-[12px] leading-snug text-ink2">
+              {estimateWith} estimates the values for “{phrase}”. They&apos;re marked AI estimate wherever they&apos;re counted.
+            </p>
+          </div>
+        )}
+        <Notice tone="warn">
+          {estimateError && (
+            <>
+              {estimateError.message}
+              {estimateError.settings && (
+                <>
+                  {' '}
+                  <a href="/settings#ai" className="font-semibold text-accent">
+                    Settings
+                  </a>
+                </>
+              )}
+            </>
+          )}
+        </Notice>
       </div>
     </Sheet>
   );

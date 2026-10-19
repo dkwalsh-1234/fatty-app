@@ -146,6 +146,8 @@ export interface DailyTotalRow {
   entries: number;
   values: Per100;
   missing: Record<string, number>;
+  /** Entries per nutrient whose value is an AI estimate. */
+  ai: Record<string, number>;
 }
 
 export async function dailyTotals(from: string, to: string): Promise<DailyTotalRow[]> {
@@ -156,6 +158,7 @@ export async function dailyTotals(from: string, to: string): Promise<DailyTotalR
     entries: Number(r.entries),
     values: toPer100(r),
     missing: (r.missing as Record<string, number>) ?? {},
+    ai: (r.ai as Record<string, number>) ?? {},
   }));
 }
 

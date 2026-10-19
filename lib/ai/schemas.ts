@@ -1,5 +1,6 @@
 // JSON shapes the AI must return. One set for every provider, so results look identical
-// whichever key someone uses. The AI never returns nutrient values for meals or text.
+// whichever key someone uses. The AI never returns nutrient values for meals, text or search;
+// EstimateSchema is the one exception, a last resort the person asks for, stored as "AI estimate".
 
 import { z } from 'zod';
 
@@ -57,6 +58,41 @@ export const TextParseSchema = z.object({
   ),
 });
 export type TextParseResult = z.infer<typeof TextParseSchema>;
+
+export const ResolveSchema = z.object({
+  phrasings: z
+    .array(z.string())
+    .describe('One to three generic ways an Australian food database would name this food, most likely first, e.g. "coffee, flat white, plant based milk"'),
+  components: z
+    .array(
+      z.object({
+        name: z.string().describe('Generic database name of one part, e.g. "coffee, espresso"'),
+        grams: z.number().describe('Grams of this part in the whole amount'),
+      }),
+    )
+    .describe('Only for a mixed drink or dish a database is unlikely to list as one food: its main parts with grams. Otherwise empty.'),
+});
+export type ResolveResult = z.infer<typeof ResolveSchema>;
+
+export const EstimateSchema = z.object({
+  name: z.string().describe('Short generic name for what was estimated, e.g. "Flat white, oat milk"'),
+  per_100g: z
+    .object({
+      energy_kj: z.number().describe('Energy in kJ per 100 g'),
+      protein_g: n,
+      fat_g: n.describe('Fat, total'),
+      sat_fat_g: n.describe('Saturated fat'),
+      trans_fat_g: n.describe('Trans fat'),
+      carbs_g: n.describe('Carbohydrate, total as on an Australian label'),
+      sugars_g: n,
+      fibre_g: n.describe('Dietary fibre'),
+      sodium_mg: n.describe('Sodium in mg'),
+    })
+    .describe('Typical values per 100 g as eaten; null where a value cannot reasonably be estimated'),
+  is_liquid: z.boolean().describe('True for drinks and other foods measured in mL'),
+  confidence: z.enum(['low', 'medium', 'high']),
+});
+export type EstimateResult = z.infer<typeof EstimateSchema>;
 
 type JsonSchema = Record<string, unknown>;
 

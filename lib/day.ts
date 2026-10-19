@@ -6,7 +6,7 @@ import { addDays, dayBounds, MEAL_ORDER, type Meal } from './dates';
 import { energyIn, kcalIn } from './format';
 import { NUTRIENT_BY_ID, NUTRIENTS, scale, sumEntries, type NutrientInfo, type Totals } from './nutrients';
 import { computeTarget, type BurnDay, type TargetBreakdown } from './target';
-import type { BurnRow, EnergyUnit, Goal, LogEntry, Profile, TargetRow, WeighIn } from './types';
+import { AI_ESTIMATE_TAG, type BurnRow, type EnergyUnit, type Goal, type LogEntry, type Profile, type TargetRow, type WeighIn } from './types';
 
 /** One burn figure per day: the person's chosen app, else the one with the highest total. Never summed. */
 export function pickBurn(rows: BurnRow[], date: string, preferred: string | null): BurnDay | null {
@@ -74,6 +74,8 @@ export interface TargetRowView {
   info: NutrientInfo;
   value: number | null;
   incomplete: number;
+  /** Entries whose value here is an AI estimate. */
+  ai: number;
   direction: 'atLeast' | 'noMoreThan' | 'range';
   min?: number;
   max: number;
@@ -91,8 +93,8 @@ export interface DayView {
   goal: { progress: number; pace: number; paceKg: number; currentKg: number; targetKg: number; targetDate: string } | null;
   targetRows: TargetRowView[];
   /** Nutrients without a target, for the "more nutrients" card. Sodium first. */
-  otherNutrients: { info: NutrientInfo; value: number | null; incomplete: number }[];
-  groups: { meal: Meal; entries: LogEntry[]; energyKj: number | null; incomplete: number }[];
+  otherNutrients: { info: NutrientInfo; value: number | null; incomplete: number; ai: number }[];
+  groups: { meal: Meal; entries: LogEntry[]; energyKj: number | null; incomplete: number; ai: number }[];
   /** Grams of each macro and its share of energy, for the ring's tap-to-switch centre. */
   macroGrams: { key: 'protein' | 'carbs' | 'fat'; grams: number | null; share: number }[];
 }
@@ -112,6 +114,7 @@ export function targetRowView(t: TargetRow, totals: Totals, unit: EnergyUnit): T
     info,
     value: totals.count === 0 ? 0 : value,
     incomplete: totals.missing[info.key],
+    ai: totals.ai[info.key],
     direction: DIRECTION[t.direction],
     min: t.direction === 'range' ? (t.low ?? 0) : undefined,
     max,
@@ -129,7 +132,7 @@ export function buildDay(opts: {
 }): DayView {
   const { date, entries, profile, goal, weighIns, burn, targets } = opts;
   const unit = profile.energy_unit;
-  const totals = sumEntries(entries.map((e) => ({ per100: e.per100_snapshot, grams: e.grams })));
+  const totals = sumEntries(entries.map(entryForTotals));
   const v = totals.values;
   const kj = v.energy_kj ?? 0;
   const split = splitEnergy(kj, { protein: v.protein_g, carbs: v.carbs_g, fat: v.fat_g });
@@ -180,12 +183,12 @@ export function buildDay(opts: {
   const targeted = new Set(targetRows.map((r) => r.info.key));
   const otherNutrients = NUTRIENTS.filter((n) => n.key !== 'energy_kj' && !targeted.has(n.key))
     .sort((a, b) => (a.key === 'sodium_mg' ? -1 : b.key === 'sodium_mg' ? 1 : 0))
-    .map((info) => ({ info, value: totals.count === 0 ? 0 : totals.values[info.key], incomplete: totals.missing[info.key] }));
+    .map((info) => ({ info, value: totals.count === 0 ? 0 : totals.values[info.key], incomplete: totals.missing[info.key], ai: totals.ai[info.key] }));
 
   const groups = MEAL_ORDER.map((meal) => {
     const es = entries.filter((e) => e.meal === meal);
-    const t = sumEntries(es.map((e) => ({ per100: e.per100_snapshot, grams: e.grams })));
-    return { meal, entries: es, energyKj: t.values.energy_kj, incomplete: t.missing.energy_kj };
+    const t = sumEntries(es.map(entryForTotals));
+    return { meal, entries: es, energyKj: t.values.energy_kj, incomplete: t.missing.energy_kj, ai: t.ai.energy_kj };
   });
 
   const macroGrams = (['protein', 'carbs', 'fat'] as const).map((k) => {
@@ -195,6 +198,11 @@ export function buildDay(opts: {
 
   return { date, totals, eaten, eatenTotal, target, ring, goal: goalView, targetRows, otherNutrients, groups, macroGrams };
 }
+
+/** An entry's values are an AI estimate (Q5): it keeps that in source_snapshot. */
+export const isAiEstimate = (e: Pick<LogEntry, 'source_snapshot'>) => e.source_snapshot === AI_ESTIMATE_TAG;
+
+const entryForTotals = (e: LogEntry) => ({ per100: e.per100_snapshot, grams: e.grams, ai: isAiEstimate(e) });
 
 /** Energy for a single entry, in kJ (null if the food has no energy value). */
 export const entryEnergyKj = (e: LogEntry) => scale(e.per100_snapshot, e.grams).energy_kj;
