@@ -38,6 +38,7 @@ export const OFF_AU_COLUMNS = [
   'fiber_100g',
   'sodium_100g',
   'last_modified_t',
+  'data_quality_errors_tags',
 ] as const;
 
 /** The export names brands in brands_en ("Oatly") or brands_tags ("oatly,xx:oatly-ab"); older ones in brands. */

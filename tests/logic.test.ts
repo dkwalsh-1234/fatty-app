@@ -8,7 +8,7 @@ import { addDays, ageOn, dayBounds, localDate, mealForTime, zonedToUtc } from '@
 import { evaluateGoal, goalLine, todaysTargetLine } from '@/components/forms/GoalForm';
 import { captionParts } from '@/lib/caption';
 import { buildDay, pickBurn, targetFor } from '@/lib/day';
-import { amountText, saltText } from '@/lib/format';
+import { amountText, nutrientText, saltText } from '@/lib/format';
 import { emptyPer100, scale, sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { parseSearch, parseText } from '@/lib/parse';
 import { cleanEstimate, cleanResolve, componentsForGrams, isWeakMatch } from '@/lib/resolution';
@@ -376,17 +376,16 @@ describe('amount sheet chips', () => {
   const m = (id: string, label: string, grams: number, rank: number, owner: string | null = null) => ({ id, food_id: 'f', label, grams, source: 'ausnut' as const, owner_id: owner, rank });
   const stat = (o: Partial<FoodStats>): FoodStats => ({ food_id: 'f', use_count: 3, last_used_at: null, last_grams: null, last_unit: null, last_amount: null, last_measure: null, ...o });
 
-  it('orders last amount, measures, serve, then pack; at most five; no repeats', () => {
+  it("orders last amount, serve, pack, then measures, as the brief says; at most five; no repeats", () => {
     const ms = [m('a', '1 cup', 30, 0), m('b', '1 tbsp', 45, 1), m('c', '1 bowl', 60, 2), m('d', '1 handful', 20, 3), m('e', '1 mine', 320, 0, 'u')];
     const chips = buildChips(food, unitOptions(food, ms), stat({ last_grams: 45, last_unit: 'g', last_amount: 45 }));
-    expect(chips.map((c) => c.label)).toEqual(['Last · 45 g', '1 mine · 320 g', '1 cup · 30 g', '1 bowl · 60 g', '1 handful · 20 g']);
+    expect(chips.map((c) => c.label)).toEqual(['Last · 45 g', 'Whole pack · 750 g', '1 mine · 320 g', '1 cup · 30 g', '1 bowl · 60 g']);
   });
 
   it('adds another measure on a second tap', () => {
-    const unit = { kind: 'measure' as const, label: 'cup', grams: 40, hint: '40 g', estimate: false, countable: false };
-    expect(measureChipLabel({ key: 'm', label: '1 cup · 40 g', unit, amount: 1, kind: 'measure' }, 2)).toBe('2 × 1 cup · 80 g');
+    expect(measureChipLabel({ key: 'm', label: '1 cup · 40 g', grams: 40, kind: 'measure' }, 2)).toBe('2 × 1 cup · 80 g');
     const cup = { kind: 'measure' as const, label: 'regular cup', grams: 285.6, hint: '280 ml', estimate: true, countable: true };
-    expect(measureChipLabel({ key: 'c', label: '1 regular cup · 280 ml', unit: cup, amount: 1, kind: 'measure' }, 2)).toBe('2 × 1 regular cup · 560 ml');
+    expect(measureChipLabel({ key: 'c', label: '1 regular cup · 280 ml', grams: 285.6, unit: cup, kind: 'measure' }, 2)).toBe('2 × 1 regular cup · 560 ml');
   });
 
   it('offers one serve, half and whole for a meal', () => {
@@ -422,15 +421,17 @@ describe('units people think in (testing on 20 Oct)', () => {
   };
   const m = (label: string, grams: number, rank = 0) => ({ id: label, food_id: 'f', label, grams, source: 'ausnut' as const, owner_id: null, rank });
 
-  it('gives a coffee ml, café cup sizes and kitchen measures, and opens on a regular cup', () => {
+  it('gives a coffee ml, café cup chips and kitchen measures, and opens in grams', () => {
     const units = unitOptions(flatWhite, []);
     expect(units.map((u) => u.label)).toEqual(['g', 'ml', 'small cup', 'regular cup', 'large cup', 'cup', 'tbsp', 'tsp']);
     const regular = units.find((u) => u.label === 'regular cup')!;
     expect(regular.grams).toBeCloseTo(280 * 1.02, 6);
     expect(regular.estimate).toBe(true);
-    const start = naturalStart(flatWhite, units, null);
-    expect([start.unit.label, start.amount]).toEqual(['regular cup', 1]);
-    expect(buildChips(flatWhite, units, null).map((c) => c.label)).toEqual(['1 small cup · 220 ml', '1 regular cup · 280 ml', '1 large cup · 350 ml']);
+    expect(naturalStart(flatWhite, units, null)).toMatchObject({ unit: { kind: 'g' }, amount: null });
+    const chips = buildChips(flatWhite, units, null);
+    expect(chips.map((c) => c.label)).toEqual(['1 small cup · 220 ml', '1 regular cup · 280 ml', '1 large cup · 350 ml']);
+    // A chip fills in grams.
+    expect(chips[1].grams).toBeCloseTo(285.6, 6);
   });
 
   it('keeps FSANZ cup sizes where it has them (espresso), and gives powders no café cups', () => {
@@ -440,31 +441,33 @@ describe('units people think in (testing on 20 Oct)', () => {
     expect(unitOptions(powder, []).some((u) => u.label.endsWith(' cup'))).toBe(false);
   });
 
-  it('opens a countable food on one medium, and bread with no slice measure on one slice', () => {
+  it('offers household measures and a slice of bread as chips, and still opens in grams', () => {
     const apple = { ...flatWhite, name: 'Apple, red skin, unpeeled, raw', density_g_per_ml: null };
-    const units = unitOptions(apple, [m('1 small', 120, 0), m('1 medium', 170, 1), m('1 cup, chopped', 120, 2)]);
-    expect(naturalStart(apple, units, null).unit.label).toBe('medium');
+    const units = unitOptions(apple, [m('1 small', 120, 0), m('1 medium', 170, 1), m('1 cup, chopped', 125, 2)]);
+    expect(naturalStart(apple, units, null)).toMatchObject({ unit: { kind: 'g' }, amount: null });
+    expect(buildChips(apple, units, null).map((c) => c.label)).toEqual(['1 small · 120 g', '1 medium · 170 g', '1 cup, chopped · 125 g']);
     const bread = { ...apple, name: 'Bread, white, commercial' };
-    const b = naturalStart(bread, unitOptions(bread, []), null);
-    expect([b.unit.label, b.unit.grams, b.amount]).toEqual(['slice', 35, 1]);
+    expect(buildChips(bread, unitOptions(bread, []), null).map((c) => c.label)).toEqual(['1 slice · 35 g']);
   });
 
-  it('opens drinks without a size in ml, a packaged product on one serve, else grams', () => {
+  it('keeps serves and packs as chips that fill in grams, never as units', () => {
+    const bar = { ...flatWhite, name: 'ClifBar Crunchy Peanut Butter', source: 'off' as const, density_g_per_ml: null, serving_g: 68, pack_g: 68 };
+    const units = unitOptions(bar, []);
+    expect(units.map((u) => u.label)).toEqual(['g']);
+    expect(naturalStart(bar, units, null)).toMatchObject({ unit: { kind: 'g' }, amount: null });
+    expect(buildChips(bar, units, null)).toEqual([{ key: 'serve', label: '1 serve · 68 g', grams: 68, kind: 'serve' }]);
     const juice = { ...flatWhite, name: 'Juice, orange, commercial', is_liquid: true, density_g_per_ml: 1.04 };
-    const units = unitOptions(juice, []);
-    expect(units.map((u) => u.label)).toContain('glass');
-    expect(naturalStart(juice, units, null).unit.label).toBe('glass');
-    const cereal = { ...flatWhite, name: 'Weet-Bix', source: 'off' as const, density_g_per_ml: null, serving_g: 30, pack_g: 575 };
-    expect(naturalStart(cereal, unitOptions(cereal, []), null).unit.label).toBe('serve');
-    const rice = { ...flatWhite, name: 'Rice, white, boiled', density_g_per_ml: null };
-    expect(naturalStart(rice, unitOptions(rice, []), null)).toMatchObject({ unit: { kind: 'g' }, amount: null });
+    expect(unitOptions(juice, []).map((u) => u.label)).toContain('glass');
   });
 
-  it('reopens on your last amount in its measure', () => {
+  it('reopens on your last amount in grams, and fills "2 eggs" in as grams', () => {
     const units = unitOptions(flatWhite, []);
     const stats = { food_id: 'f', use_count: 2, last_used_at: null, last_grams: 357, last_unit: 'measure' as const, last_amount: 1, last_measure: 'large cup' };
-    expect(naturalStart(flatWhite, units, stats)).toMatchObject({ unit: { label: 'large cup' }, amount: 1, fromLast: true });
-    expect(buildChips(flatWhite, units, stats)[0].label).toBe('Last · 1 large cup');
+    expect(naturalStart(flatWhite, units, stats)).toMatchObject({ unit: { kind: 'g' }, amount: 357, fromLast: true });
+    expect(buildChips(flatWhite, units, stats)[0]).toMatchObject({ label: 'Last · 1 large cup', grams: 357 });
+    const egg = { ...flatWhite, name: 'Egg, chicken, whole, raw', density_g_per_ml: null };
+    const eggUnits = unitOptions(egg, [m('1 egg', 50)]);
+    expect(naturalStart(egg, eggUnits, null, { count: 2 })).toMatchObject({ unit: { kind: 'g' }, amount: 100, chip: { key: 'u:egg', count: 2 } });
   });
 
   it('converts a prefilled amount when the unit changes, and writes amounts the way people say them', () => {
@@ -497,6 +500,79 @@ describe('Open Food Facts mapping', () => {
   it('falls back to kcal × 4.184, and treats no energy as a miss', () => {
     expect(mapOffProduct('1', { nutriments: { 'energy-kcal_100g': 100 } })!.energy_kj).toBe(418.4);
     expect(mapOffProduct('1', { nutriments: { proteins_100g: 5 } })).toBeNull();
+  });
+
+  // The real Open Food Facts record for barcode 0722252101204 on 21 Oct 2026: the per-bar values
+  // typed in as per 100 g, and sodium in the wrong unit.
+  const clifOff = {
+    product_name: 'ClifBar Crunchy Peanut Butter',
+    brands: 'Clif',
+    quantity: '2.40 oz',
+    product_quantity: 68.0388555,
+    serving_size: '1 bar (68 g)',
+    serving_quantity: 68,
+    nutrition_data_per: '100g',
+    nutriments: {
+      'energy-kj': 1203, 'energy-kj_100g': 1203, 'energy-kj_serving': 818, 'energy-kcal_100g': 260, 'energy-kcal_serving': 177,
+      proteins: 11, proteins_100g: 11, proteins_serving: 7.48, fat_100g: 8, fat_serving: 5.44, 'saturated-fat_100g': 1, 'saturated-fat_serving': 0.68,
+      carbohydrates_100g: 40, carbohydrates_serving: 27.2, sugars_100g: 17, sugars_serving: 11.6, fiber_100g: 5, fiber_serving: 3.4,
+      sodium: 3.38e-7, sodium_100g: 3.38e-7, sodium_serving: 2.3e-7,
+    },
+    data_quality_errors_tags: [],
+    data_quality_warnings_tags: ['en:nutrition-value-under-0-001-g-salt', 'en:environmental-score-packaging-packaging-data-missing'],
+  };
+
+  it("reads only *_100g: the Clif Bar's wrong record is read faithfully, but flagged and sodium left unknown", () => {
+    const f = mapOffProduct('0722252101204', clifOff)!;
+    expect([f.protein_g, f.sugars_g, f.energy_kj, f.serving_g]).toEqual([11, 17, 1203, 68]);
+    // 0.000000338 g isn't a value a label prints: unknown, never 0.
+    expect(f.sodium_mg).toBeNull();
+    expect(f.trans_fat_g).toBeNull();
+    // Its per-serve values were worked out from per 100 g, so they agree; the tags and sodium flag it.
+    expect(f.quality_flags).toEqual(['implausible_value', 'off_quality']);
+  });
+
+  it('ignores Open Food Facts tags about packaging or eco-score', () => {
+    const f = mapOffProduct('1', { nutriments: { 'energy-kj_100g': 100 }, data_quality_warnings_tags: ['en:environmental-score-packaging-packaging-data-missing'] })!;
+    expect(f.quality_flags).toEqual([]);
+  });
+
+  it('works out per 100 g from per serve when that is all there is, and flags it', () => {
+    const f = mapOffProduct('2', { serving_size: '1 bar (68 g)', nutriments: { 'energy-kj_serving': 1088, proteins_serving: 11.1, sodium_serving: 0.231 } })!;
+    expect(f.energy_kj).toBe(1600);
+    expect(f.protein_g).toBeCloseTo(16.32, 2);
+    expect(f.sodium_mg).toBe(339.7);
+    expect(f.quality_flags).toEqual(['derived_from_serving']);
+  });
+
+  it('flags per-serve and per-100 g values that disagree by more than 10%', () => {
+    const f = mapOffProduct('3', { serving_quantity: 68, nutriments: { 'energy-kj_100g': 1600, proteins_100g: 16.3, proteins_serving: 7.5 } })!;
+    expect(f.quality_flags).toEqual(['serving_mismatch']);
+    const ok = mapOffProduct('4', { serving_quantity: 68, nutriments: { 'energy-kj_100g': 1600, proteins_100g: 16.3, proteins_serving: 11.1 } })!;
+    expect(ok.quality_flags).toEqual([]);
+  });
+
+  it('keeps a missing value null and a printed 0 as 0', () => {
+    const f = mapOffProduct('5', { nutriments: { 'energy-kj_100g': 0, sodium_100g: 0 } })!;
+    expect([f.energy_kj, f.sodium_mg, f.protein_g]).toEqual([0, 0, null]);
+  });
+});
+
+describe('Clif Bar Crunchy Peanut Butter from its label (21 Oct)', () => {
+  // The label's per-100 g column; one bar is 68 g.
+  const label = { ...emptyPer100(), energy_kj: 1600, protein_g: 16.3, fat_g: 11.8, sat_fat_g: 2.2, carbs_g: 61.8, sugars_g: 25, fibre_g: 7.4, sodium_mg: 340 };
+
+  it('logging 68 g gives protein 11.1 g, sugars 17.0 g and sodium 231 mg', () => {
+    const bar = scale(label, 68);
+    expect(nutrientText('protein_g', bar.protein_g)).toBe('11.1 g');
+    expect(nutrientText('sugars_g', bar.sugars_g)).toBe('17.0 g');
+    expect(nutrientText('sodium_mg', bar.sodium_mg)).toBe('231 mg');
+  });
+
+  it('is what one serve fills in on the amount sheet', () => {
+    const bar = { name: 'ClifBar Crunchy Peanut Butter', display_name: null, source: 'label' as const, is_liquid: false, density_g_per_ml: null, serving_g: 68, pack_g: null, total_weight_g: null, serves: null };
+    const serve = buildChips(bar, unitOptions(bar, []), null).find((c) => c.kind === 'serve')!;
+    expect(scale(label, serve.grams).protein_g).toBeCloseTo(11.084, 3);
   });
 });
 
@@ -615,9 +691,11 @@ describe('Open Food Facts, Australian products (Q3)', () => {
     expect(mapOffAuRow(row({ 'energy-kj_100g': '354', energy_100g: '354' }))).toEqual({ drop: 'energy far below its macros' });
   });
 
-  it('leaves a 0 serving or pack size blank', () => {
-    const m = mapOffAuRow(row({ serving_quantity: '0', product_quantity: '0' }));
-    expect('food' in m && [m.food.serving_g, m.food.pack_g]).toEqual([null, null]);
+  it('leaves a 0 serving or pack size blank, unless the serving text says how much', () => {
+    const blank = mapOffAuRow(row({ serving_quantity: '0', serving_size: '', product_quantity: '0' }));
+    expect('food' in blank && [blank.food.serving_g, blank.food.pack_g]).toEqual([null, null]);
+    const fromText = mapOffAuRow(row({ serving_quantity: '0', serving_size: '30 g' }));
+    expect('food' in fromText && fromText.food.serving_g).toBe(30);
   });
 
   it('keeps the product but drops a part bigger than its whole', () => {

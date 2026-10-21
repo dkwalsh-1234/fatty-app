@@ -1,9 +1,11 @@
 'use client';
 
 // Label photo flow (design 06-label-review). For products no database has, products without a
-// barcode, and to fill missing nutrients. The AI reads per-100 g values; the person checks them
-// beside the photo; Confirm adds the food to the shared catalogue with the photo. Without an AI
-// key the same form opens empty for typing the values in.
+// barcode, to fill missing nutrients, and to correct a food whose numbers are wrong ("Numbers wrong?
+// Photograph the label" on the amount sheet). The AI reads per-100 g values; the person checks them
+// beside the photo; Confirm adds the food to the shared catalogue with the photo. A correction then
+// offers to update the person's entries logged from the old values. Without an AI key the same form
+// opens empty for typing the values in.
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -15,8 +17,9 @@ import type { LabelResult } from '@/lib/ai/schemas';
 import { signedPhotoUrl, uploadPhoto } from '@/lib/camera';
 import { LABEL_PHOTO_BUCKET } from '@/lib/config';
 import { getFood, toFood } from '@/lib/data';
+import { correctEntries } from '@/lib/logging';
 import { NUTRIENTS, type NutrientKey } from '@/lib/nutrients';
-import type { Food } from '@/lib/types';
+import { SOURCE_TAG, type Food } from '@/lib/types';
 
 export default function LabelPage() {
   return (
@@ -40,6 +43,7 @@ function Label() {
   const date = params.get('d') ?? undefined;
   const forMeal = params.get('for');
   const fillId = params.get('mode') === 'fill' ? params.get('food') : null;
+  const correctId = params.get('mode') === 'correct' ? params.get('food') : null;
   const hasKey = !!app.aiKey;
 
   const [rawStage, setStage] = useState<'capture' | 'front' | 'ready' | 'reading' | 'review'>(() =>
@@ -53,6 +57,9 @@ function Label() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [labelPhotoId, setLabelPhotoId] = useState<string | null>(null);
   const [fillFood, setFillFood] = useState<Food | null>(null);
+  /** The food a correction replaces, and what happened once it's confirmed. */
+  const [correctFood, setCorrectFood] = useState<Food | null>(null);
+  const [corrected, setCorrected] = useState<{ food: Food; existing: boolean; replaced: string; entries: number; updated: number | null } | null>(null);
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [serve, setServe] = useState('');
@@ -78,6 +85,21 @@ function Label() {
       })
       .catch((e: Error) => setError({ message: e.message }));
   }, [fillId]);
+
+  // A correction starts from the food's name and sizes; the values come from the label.
+  useEffect(() => {
+    if (!correctId) return;
+    getFood(correctId)
+      .then((f) => {
+        setCorrectFood(f);
+        setName(f.display_name ?? f.name);
+        setBrand(f.brand ?? '');
+        setServe(fmt(f.serving_g));
+        setPack(fmt(f.pack_g));
+        setLiquid(f.is_liquid);
+      })
+      .catch((e: Error) => setError({ message: e.message }));
+  }, [correctId]);
 
   useEffect(() => {
     if (photoPath) void signedPhotoUrl(LABEL_PHOTO_BUCKET, photoPath).then(setPhotoUrl);
@@ -111,9 +133,11 @@ function Label() {
       const res = await fetch('/api/label', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ photo_path: photoPath, front_path: frontPath, barcode }),
+        body: JSON.stringify({ photo_path: photoPath, front_path: frontPath, barcode: barcode ?? correctFood?.barcode ?? null, correct: !!correctFood }),
       });
       const body = (await res.json()) as { draft?: LabelResult; label_photo_id?: string; existing?: Record<string, unknown>; error?: string; settings?: boolean };
+      // Someone already corrected this product from its label: use theirs.
+      if (body.existing && correctFood) return void send();
       if (body.existing) return done(toFood(body.existing), true);
       if (!res.ok || !body.draft) throw Object.assign(new Error(body.error ?? "Couldn't read the label."), { settings: body.settings });
       applyDraft(body.draft);
@@ -161,18 +185,22 @@ function Label() {
       const v = num(values[n.key]);
       if (v != null && !(v >= 0)) return setError({ message: `${n.label} doesn't look like a number.` });
     }
+    await send();
+  }
+
+  async function send() {
     setBusy(true);
     try {
       const res = await fetch('/api/label/confirm', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          mode: fillFood ? 'fill' : 'new',
-          food_id: fillFood?.id,
+          mode: fillFood ? 'fill' : correctFood ? 'correct' : 'new',
+          food_id: fillFood?.id ?? correctFood?.id,
           label_photo_id: labelPhotoId,
           photo_path: photoPath,
-          barcode,
-          name: name.trim(),
+          barcode: barcode ?? correctFood?.barcode ?? null,
+          name: name.trim() || correctFood?.name || 'Product',
           brand: brand.trim() || null,
           serving_g: num(serve),
           pack_g: num(pack),
@@ -180,8 +208,14 @@ function Label() {
           values: Object.fromEntries(NUTRIENTS.map((n) => [n.key, num(values[n.key])])),
         }),
       });
-      const body = (await res.json()) as { food?: Record<string, unknown>; existing?: boolean; error?: string };
+      const body = (await res.json()) as { food?: Record<string, unknown>; existing?: boolean; replaced?: string; entries?: number; error?: string };
       if (!res.ok || !body.food) throw new Error(body.error ?? "Couldn't save.");
+      if (correctFood) {
+        setCorrected({ food: toFood(body.food), existing: !!body.existing, replaced: body.replaced ?? correctFood.id, entries: body.entries ?? 0, updated: null });
+        setStage('review');
+        setBusy(false);
+        return;
+      }
       done(toFood(body.food), !!body.existing);
     } catch (e) {
       setError({ message: e instanceof Error ? e.message : "Couldn't save." });
@@ -223,7 +257,72 @@ function Label() {
     );
   }
 
-  const title = fillFood ? 'Fill the gaps' : 'Check the label';
+  async function updateEntries() {
+    if (!corrected) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const n = await correctEntries(corrected.replaced, corrected.food, app.profile.time_zone);
+      setCorrected({ ...corrected, updated: n });
+    } catch (e) {
+      setError({ message: e instanceof Error ? e.message : "Couldn't update your entries." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // A correction is confirmed: say so, and offer to update the entries from the old values.
+  if (corrected) {
+    const { food, existing, entries, updated } = corrected;
+    const plural = entries === 1 ? 'entry' : 'entries';
+    return (
+      <Screen>
+        <div className="sticky top-0 z-20 -mx-4 flex h-[60px] items-center justify-between bg-bg/90 px-2 backdrop-blur-md">
+          <BackButton href="/" />
+          <h1 className="text-[18px] font-semibold">Corrected</h1>
+          <span className="w-11" />
+        </div>
+        <Card className="mt-2 flex flex-col gap-2">
+          <h2 className="line-clamp-2 text-[18px] font-semibold leading-snug">{food.display_name ?? food.name}</h2>
+          <p className="text-[15px] leading-snug text-ink2">
+            {existing
+              ? 'Someone already corrected this product from its label, so theirs is used.'
+              : 'Saved from the label for everyone. Scanning or searching it now gives these values.'}
+          </p>
+        </Card>
+        {entries > 0 && updated == null && (
+          <Card className="mt-3 flex flex-col gap-3">
+            <p className="text-[16px] leading-snug">
+              Update your {entries} {plural} logged from the old values?
+            </p>
+            <p className="text-[13px] leading-snug text-ink2">Amounts and times stay as they are; only the nutrition values change to the label&apos;s.</p>
+            <div className="flex gap-2">
+              <Button size="md" onClick={updateEntries} disabled={busy} className="flex-1">
+                {busy ? 'Updating…' : `Update ${entries} ${plural}`}
+              </Button>
+              <Button size="md" variant="secondary" onClick={() => setCorrected({ ...corrected, updated: 0 })} disabled={busy}>
+                Not now
+              </Button>
+            </div>
+          </Card>
+        )}
+        {updated != null && updated > 0 && <Notice className="mt-3 text-center">Updated {updated} {updated === 1 ? 'entry' : 'entries'}.</Notice>}
+        <Notice tone="warn" className="mt-3">
+          {error?.message}
+        </Notice>
+        {(entries === 0 || updated != null) && (
+          <div className="mt-4 flex flex-col gap-2">
+            <Button onClick={() => app.openAmount({ kind: 'food', foodId: food.id, food, method: 'label', date })}>Log it now</Button>
+            <Button variant="secondary" onClick={() => router.replace(date && date !== app.today ? `/?d=${date}` : '/')}>
+              Done
+            </Button>
+          </div>
+        )}
+      </Screen>
+    );
+  }
+
+  const title = fillFood ? 'Fill the gaps' : correctFood ? 'Correct from the label' : 'Check the label';
   return (
     <Screen>
       <div className="sticky top-0 z-20 -mx-4 flex h-[60px] items-center justify-between bg-bg/90 px-2 backdrop-blur-md">
@@ -362,7 +461,11 @@ function Label() {
             {error?.message}
           </Notice>
           <p className="mx-1 mt-3 text-center text-[14px] text-ink2">
-            {fillFood ? 'Only the missing values are added. Everyone sees the filled-in food.' : 'Confirm adds it to the shared catalogue' + (photoPath ? ' with the photo.' : '.')}
+            {fillFood
+              ? 'Only the missing values are added. Everyone sees the filled-in food.'
+              : correctFood
+                ? `Confirm replaces the ${SOURCE_TAG[correctFood.source]} values with the label's, for everyone.`
+                : 'Confirm adds it to the shared catalogue' + (photoPath ? ' with the photo.' : '.')}
           </p>
           <Dock>
             <DockButton primary onClick={confirm} disabled={busy}>

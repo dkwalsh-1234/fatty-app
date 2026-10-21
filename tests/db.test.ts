@@ -412,8 +412,8 @@ describe("AI fallbacks (item 4 and Q5)", () => {
     await as(DANIEL, () =>
       db.query(
         `insert into public.log_entries (eaten_at, meal, food_name_snapshot, source_snapshot, grams, entered_amount, per100_snapshot, method)
-         values ('2026-10-21T01:00:00Z', 'breakfast', 'Chai latte', 'AI estimate', 250, 250, $1, 'search'),
-                ('2026-10-21T01:05:00Z', 'breakfast', 'Toast', 'FSANZ', 40, 40, $2, 'search')`,
+         values ('2026-11-03T01:00:00Z', 'breakfast', 'Chai latte', 'AI estimate', 250, 250, $1, 'search'),
+                ('2026-11-03T01:05:00Z', 'breakfast', 'Toast', 'FSANZ', 40, 40, $2, 'search')`,
         [
           per100({ energy_kj: 290, protein_g: 3, fat_g: 3, sat_fat_g: 2, trans_fat_g: null, carbs_g: 9, sugars_g: 8, fibre_g: 0, sodium_mg: 40 }),
           per100({ energy_kj: 1000, protein_g: 9, fat_g: 3, sat_fat_g: 1, trans_fat_g: 0, carbs_g: 45, sugars_g: 3, fibre_g: 6, sodium_mg: 450 }),
@@ -421,7 +421,7 @@ describe("AI fallbacks (item 4 and Q5)", () => {
       ),
     );
     const t = await as(DANIEL, () =>
-      one<{ entries: number; ai: Record<string, number>; missing: Record<string, number> }>(`select * from public.daily_totals('2026-10-21', '2026-10-21')`),
+      one<{ entries: number; ai: Record<string, number>; missing: Record<string, number> }>(`select * from public.daily_totals('2026-11-03', '2026-11-03')`),
     );
     expect(t.entries).toBe(2);
     expect(t.ai.energy_kj).toBe(1);
@@ -453,5 +453,38 @@ describe("search ranking with Open Food Facts products (Q3)", () => {
     expect(await first("chicken breast")).toBe("Chicken, breast, lean, raw");
     expect(await first("oatly barista")).toBe("Oat milk barista edition");
     expect(await first("oatly")).toBe("Oat milk barista edition");
+  });
+});
+
+describe("label corrections (21 Oct)", () => {
+  it("lets a label row sit beside the Open Food Facts row for a barcode, one label row per barcode", async () => {
+    await asService(() =>
+      db.exec(`insert into public.foods (source, source_id, visibility, barcode, name, brand, energy_kj, protein_g)
+               values ('off', '0722252101204', 'shared', '0722252101204', 'ClifBar Crunchy Peanut Butter', 'Clif', 1203, 11)`),
+    );
+    await asService(() =>
+      db.exec(`insert into public.foods (source, visibility, created_by, barcode, name, brand, energy_kj, protein_g)
+               values ('label', 'shared', '${DANIEL}', '0722252101204', 'ClifBar Crunchy Peanut Butter', 'Clif', 1600, 16.3)`),
+    );
+    await expect(
+      asService(() =>
+        db.exec(`insert into public.foods (source, visibility, created_by, barcode, name, energy_kj) values ('label', 'shared', '${FRIEND}', '0722252101204', 'Again', 1)`),
+      ),
+    ).rejects.toThrow(/duplicate key/);
+  });
+
+  it("hides a corrected food from search and finds the label row instead", async () => {
+    await asService(() =>
+      db.exec(`update public.foods set superseded_by = (select id from public.foods where source = 'label' and barcode = '0722252101204')
+               where source = 'off' and barcode = '0722252101204'`),
+    );
+    const { rows } = await as(DANIEL, () => db.query<{ source: string; protein: string }>(`select source, (select protein_g from public.foods f where f.id = s.id) as protein from public.search_foods('clifbar crunchy peanut') s`));
+    expect(rows.map((r) => r.source)).toEqual(["label"]);
+    expect(Number(rows[0].protein)).toBe(16.3);
+  });
+
+  it("keeps quality flags on foods, empty by default", async () => {
+    const f = await one<{ quality_flags: string[] }>(`select quality_flags from public.foods where source = 'label' and barcode = '0722252101204'`);
+    expect(f.quality_flags).toEqual([]);
   });
 });

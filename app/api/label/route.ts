@@ -12,20 +12,17 @@ import { admin } from "@/lib/supabase/admin";
 export async function POST(req: Request) {
   const auth = await routeUser();
   if ("error" in auth) return auth.error;
-  const body = await readJson<{ photo_path?: string; front_path?: string | null; barcode?: string | null }>(req);
+  const body = await readJson<{ photo_path?: string; front_path?: string | null; barcode?: string | null; correct?: boolean }>(req);
   if (!body?.photo_path) return bad("Take a photo of the nutrition panel first.");
   const barcode = body.barcode ? normalizeBarcode(body.barcode) : null;
 
-  // A label is only ever read once across all users: check the catalogue by barcode first.
+  // A label is only ever read once across all users: check the catalogue by barcode first. A
+  // correction ("Numbers wrong?") reads the photo anyway, unless someone already corrected it.
   if (barcode) {
-    const { data: known } = await auth.sb
-      .from("foods")
-      .select("*")
-      .eq("barcode", barcode)
-      .eq("visibility", "shared")
-      .not("energy_kj", "is", null)
-      .limit(1);
-    if (known?.[0]) return json({ existing: known[0] });
+    let known = auth.sb.from("foods").select("*").eq("barcode", barcode).eq("visibility", "shared").not("energy_kj", "is", null);
+    if (body.correct) known = known.eq("source", "label");
+    const { data } = await known.limit(1);
+    if (data?.[0]) return json({ existing: data[0] });
   }
 
   let ai;

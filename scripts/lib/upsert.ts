@@ -87,6 +87,7 @@ export function foodPayload(f: FoodRow, withDisplayName: boolean): Record<string
     is_liquid: f.is_liquid ?? false,
     density_g_per_ml: f.density_g_per_ml ?? null,
     raw: f.raw ?? null,
+    quality_flags: f.quality_flags ?? [],
   };
   for (const k of NUTRIENT_KEYS) p[k] = f[k];
   if (withDisplayName) p.display_name = f.display_name ?? f.name;

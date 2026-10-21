@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import type { ImportReport } from './fsanz-common';
 import { NUTRIENT_KEYS, type NutrientKey } from '../nutrients';
-import { mapOffProduct, type OffProduct } from './off';
+import { mapOffProduct, nutritionQualityTags, type OffProduct } from './off';
 import type { FoodRow, MeasureRow } from './types';
 
 export const OFF_AU_FILE = 'off-au.tsv.gz';
@@ -45,6 +45,8 @@ export function mapOffAuRow(row: Record<string, string>): { food: FoodRow } | { 
     serving_quantity: row.serving_quantity,
     product_quantity: row.product_quantity,
     nutriments: Object.fromEntries(NUTRIMENT_COLUMNS.filter((c) => row[c] !== '' && row[c] !== undefined).map((c) => [c, row[c]])),
+    // The bulk export has error tags only; warnings come with a barcode lookup.
+    data_quality_errors_tags: row.data_quality_errors_tags ?? '',
   };
   const food = mapOffProduct(code, p);
   if (!food) return { drop: 'no energy' };
@@ -63,11 +65,21 @@ export function mapOffAuRow(row: Record<string, string>): { food: FoodRow } | { 
   if (food.sat_fat_g != null && food.fat_g != null && food.sat_fat_g > food.fat_g + 0.5) food.sat_fat_g = null;
   if (food.sugars_g != null && food.carbs_g != null && food.sugars_g > food.carbs_g + 0.5) food.sugars_g = null;
   // Keep only what identifies the product; the nutrients are already in their columns.
-  food.raw = { code, quantity: row.quantity || null, serving_size: row.serving_size || null, last_modified_t: Number(row.last_modified_t) || null };
+  const tags = nutritionQualityTags(p);
+  food.raw = {
+    code,
+    quantity: row.quantity || null,
+    serving_size: row.serving_size || null,
+    last_modified_t: modifiedAt(row.last_modified_t) || null,
+    ...(tags.length ? { quality_tags: tags } : {}),
+  };
   food.name = food.name.replace(/\s+/g, ' ').slice(0, 200);
   food.display_name = food.name;
   return { food };
 }
+
+/** The export gives last_modified_t as a date ("2026-10-19T18:50:25Z") or seconds; seconds either way. */
+export const modifiedAt = (v: string | undefined) => Number(v) || Math.floor(Date.parse(v ?? '') / 1000) || 0;
 
 export function parseOffAuTsv(text: string): Record<string, string>[] {
   const lines = text.split('\n').filter(Boolean);
@@ -102,12 +114,14 @@ export async function loadOffAu(dir: string, skipBarcodes: Set<string> = new Set
       drop('barcode already in the label catalogue');
       continue;
     }
-    const modified = Number(row.last_modified_t) || 0;
+    const modified = modifiedAt(row.last_modified_t);
     const seen = byCode.get(row.code);
     if (seen) drop('duplicate barcode');
     if (!seen || modified > seen.modified) byCode.set(row.code, { food: m.food, modified });
   }
   const foods = [...byCode.values()].map((x) => x.food);
+  const flagged: Record<string, number> = {};
+  for (const f of foods) for (const q of f.quality_flags ?? []) flagged[`flagged: ${q}`] = (flagged[`flagged: ${q}`] ?? 0) + 1;
   const nullCounts = Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, foods.filter((f) => f[k] == null).length])) as Record<NutrientKey, number>;
   const report: ImportReport = {
     label: 'Open Food Facts, Australian products',
@@ -125,7 +139,12 @@ export async function loadOffAu(dir: string, skipBarcodes: Set<string> = new Set
       { key: 'sodium_mg', header: 'sodium_100g', unit: 'mg', note: 'g × 1000' },
     ],
     extraColumns: [],
-    counts: { 'rows in the file': rows.length, 'products to import': foods.length, ...Object.fromEntries(Object.entries(dropped).map(([k, v]) => [`dropped: ${k}`, v])) },
+    counts: {
+      'rows in the file': rows.length,
+      'products to import': foods.length,
+      ...Object.fromEntries(Object.entries(dropped).map(([k, v]) => [`dropped: ${k}`, v])),
+      ...flagged,
+    },
     nullCounts,
     belowLor: 0,
     negative: 0,

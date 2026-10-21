@@ -7,7 +7,7 @@ import { addDays, dayBounds, type Meal } from './dates';
 import { NUTRIENT_KEYS, toPer100, type Per100 } from './nutrients';
 import { toProfile } from './profile';
 import { supabase } from './supabase/browser';
-import type { BurnRow, Food, FoodStats, Goal, IngredientAdjustment, LogEntry, LogMethod, Measure, MealIngredient, Profile, TargetRow, WeighIn } from './types';
+import { SOURCE_TAG, type BurnRow, type Food, type FoodStats, type Goal, type IngredientAdjustment, type LogEntry, type LogMethod, type Measure, type MealIngredient, type Profile, type TargetRow, type WeighIn } from './types';
 
 function fail(e: { message?: string } | null, what: string): never {
   throw new Error(e?.message ? `${what}: ${e.message}` : what);
@@ -26,6 +26,8 @@ export function toFood(r: Record<string, unknown>): Food {
     serves: num(r.serves),
     density_g_per_ml: num(r.density_g_per_ml),
     missing_nutrients: (r.missing_nutrients as Food['missing_nutrients']) ?? [],
+    quality_flags: (r.quality_flags as string[] | null) ?? [],
+    superseded_by: (r.superseded_by as string | null) ?? null,
   };
 }
 
@@ -196,6 +198,44 @@ export async function updateEntry(id: string, patch: Partial<NewEntry>): Promise
   const { data, error } = await supabase().from('log_entries').update(body).eq('id', id).select('*').single();
   if (error) fail(error, "Couldn't save");
   return toEntry(data);
+}
+
+/**
+ * After a label photo corrects a food: your entries logged from the old values take the label's,
+ * keeping their grams, times and how you entered them. This is the one exception to a snapshot
+ * never changing, because it fixes a source error rather than recording an edit. Your history for
+ * the food (last amount, how often) moves to the corrected food too.
+ */
+export async function moveEntriesToCorrectedFood(oldFoodId: string, food: Food): Promise<LogEntry[]> {
+  const { data, error } = await supabase().from('log_entries').select('id').eq('food_id', oldFoodId);
+  if (error) fail(error, "Couldn't load your entries");
+  const patch = {
+    food_id: food.id,
+    food_name_snapshot: food.display_name ?? food.name,
+    source_snapshot: SOURCE_TAG[food.source],
+    per100_snapshot: toPer100(food),
+  };
+  const updated: LogEntry[] = [];
+  for (const { id } of data ?? []) updated.push(await updateEntry(id as string, patch));
+  const [oldStats, newStats] = await Promise.all([getStats(oldFoodId), getStats(food.id)]);
+  if (oldStats) {
+    const uid = await userId();
+    const latest = !newStats?.last_used_at || (oldStats.last_used_at ?? '') > newStats.last_used_at ? oldStats : newStats;
+    await supabase()
+      .from('user_food_stats')
+      .upsert({
+        owner_id: uid,
+        food_id: food.id,
+        use_count: oldStats.use_count + (newStats?.use_count ?? 0),
+        last_used_at: latest.last_used_at,
+        last_grams: latest.last_grams,
+        last_unit: latest.last_unit,
+        last_amount: latest.last_amount,
+        last_measure: latest.last_measure ?? null,
+      });
+    await supabase().from('user_food_stats').delete().eq('food_id', oldFoodId);
+  }
+  return updated;
 }
 
 export async function deleteEntries(ids: string[]): Promise<void> {

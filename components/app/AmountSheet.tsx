@@ -1,10 +1,10 @@
 'use client';
 
 // The amount sheet: every flow that lands on a single food or meal opens it.
-// Choosing a food opens the amount field with the keypad up, in the food's natural unit: your last
-// amount, a regular café cup, one slice or one medium, ml for drinks, else grams. Typing a number
-// and tapping Save is the whole job. The unit beside the number switches to any unit the food has
-// (g, ml, cup, tbsp, tsp, its household measures, typical sizes, serve, pack); grams stay the truth.
+// Choosing a food opens an amount field already in grams with the keypad up; typing 45 and tapping
+// Save is the whole job. Chips fill in grams: your last amount, a serve, the pack, café cups and
+// household measures. The unit beside the number can switch to ml, cup, tbsp, tsp or a household
+// or typical measure, for people who think in those; serves are chips only. Grams stay the truth.
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -30,7 +30,7 @@ import { energyIn, energyText, int, nutrientText, saltText } from '@/lib/format'
 import { removeEntries, saveEntries, saveEntryEdit } from '@/lib/logging';
 import { NUTRIENTS, scale, type Per100 } from '@/lib/nutrients';
 import type { FoodSource } from '@/lib/sources/types';
-import { SOURCE_TAG, type Food, type FoodStats, type IngredientAdjustment, type LogEntry, type LogMethod, type MealIngredient } from '@/lib/types';
+import { SOURCE_TAG, type Food, type FoodStats, type IngredientAdjustment, type LogEntry, type LogMethod, type Measure, type MealIngredient } from '@/lib/types';
 import { Button, Chip, cx, Field, Icon, Notice, RoundButton, Sheet } from '../ui';
 import { useApp, useDay } from './AppProvider';
 
@@ -75,6 +75,21 @@ function entryUnit(e: LogEntry): AmountUnit {
 
 const sameUnit = (a: AmountUnit, b: AmountUnit) => a.kind === b.kind && a.label === b.label;
 
+/** In plain words, the first reason a food's values should be checked against the pack. */
+function checkReason(flags: string[]): string {
+  if (flags.includes('implausible_value')) return 'a value looked impossible and was left out';
+  if (flags.includes('serving_mismatch')) return 'its per-serve and per-100 g values disagree';
+  if (flags.includes('off_quality')) return 'Open Food Facts flags its nutrition data';
+  if (flags.includes('derived_from_serving')) return 'worked out from the per-serve values';
+  return 'the values may be wrong';
+}
+
+/**
+ * "Numbers wrong? Photograph the label": for any food not read from a label that has a pack to
+ * photograph, a barcoded product, or your own food or AI estimate. Not FSANZ's generic foods or meals.
+ */
+const canCorrect = (f: Food) => f.source !== 'label' && f.source !== 'meal' && (!!f.barcode || f.source === 'ai' || f.source === 'user');
+
 export function AmountSheet({ request, onClose }: { request: AmountRequest; onClose: () => void }) {
   const cancel = () => {
     if (request.kind === 'food') request.onCancel?.();
@@ -92,6 +107,8 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
   const [food, setFood] = useState<Food | null>(request.kind !== 'edit' ? (request.food ?? null) : null);
   const [units, setUnits] = useState<AmountUnit[]>(() => (edit ? [GRAMS, entryUnit(edit)].filter((u, i, a) => a.findIndex((x) => sameUnit(x, u)) === i) : [GRAMS]));
   const [stats, setStats] = useState<FoodStats | null>(null);
+  /** The food had been corrected from a label photo, so the corrected one is shown. */
+  const [corrected, setCorrected] = useState(false);
   const [ingredients, setIngredients] = useState<MealIngredient[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -141,11 +158,18 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
     if (!foodId) return;
     let live = true;
     const fx = app.fixtures?.foods[foodId];
-    Promise.all(
-      fx
-        ? [Promise.resolve(fx.food), Promise.resolve(fx.measures), Promise.resolve(fx.stats)]
-        : [food ? Promise.resolve(food) : getFood(foodId), getMeasures(foodId), getStats(foodId)],
-    )
+    const load = async (): Promise<[Food, Measure[], FoodStats | null]> => {
+      if (fx) return [fx.food, fx.measures, fx.stats];
+      const f = food ?? (await getFood(foodId));
+      // A label photo corrected this food: log the corrected one. (An edit keeps its own snapshot.)
+      if (f.superseded_by && !edit) {
+        const fixed = await getFood(f.superseded_by);
+        setCorrected(true);
+        return Promise.all([fixed, getMeasures(fixed.id), getStats(fixed.id)]);
+      }
+      return Promise.all([f, getMeasures(foodId), getStats(foodId)]);
+    };
+    load()
       .then(async ([f, m, s]) => {
         if (!live) return;
         setFood(f);
@@ -165,7 +189,10 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
           setUnit(start.unit);
           if (start.amount != null) setTyped(amountString(start.amount));
           if (start.fromLast) setActiveChip('last');
-          else if (start.unit.kind === 'measure' && start.amount === 1) setActiveChip(`u:${start.unit.label}`);
+          else if (start.chip) {
+            setActiveChip(start.chip.key);
+            setChipCounts({ [start.chip.key]: start.chip.count });
+          }
           setPrefilled(start.amount != null && !(request.kind === 'food' && request.prefill?.amount));
         }
       })
@@ -222,8 +249,13 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
     const n = chip.kind === 'measure' && activeChip === chip.key ? (chipCounts[chip.key] ?? 1) + 1 : 1;
     setChipCounts({ [chip.key]: n });
     setActiveChip(chip.key);
-    setUnit(chip.unit);
-    setTyped(amountString(chip.kind === 'measure' ? n : chip.amount));
+    // Chips fill in grams (or ml when you're in ml).
+    const grams = chip.grams * n;
+    if (unit.kind === 'ml') setTyped(amountString(grams / unit.grams));
+    else {
+      setUnit(GRAMS);
+      setTyped(amountString(grams));
+    }
     setTouched(false);
     setPrefilled(false);
     inputRef.current?.focus();
@@ -466,6 +498,13 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
             </div>
           )}
 
+          {(corrected || (food && food.quality_flags.length > 0 && food.source !== 'label')) && (
+            <p className="-my-1 flex items-center justify-center gap-1.5 text-center text-[13px] text-ink2">
+              <Icon name="info" size={15} />
+              {corrected ? 'Corrected from a label photo' : `Check against pack · ${checkReason(food!.quality_flags)}`}
+            </p>
+          )}
+
           {isMeal && ingredients && ingredients.length > 0 && request.kind !== 'pick' && (
             <div className="-my-1 flex justify-center">
               <Button variant="link" onClick={() => setAdjusting(true)}>
@@ -505,6 +544,23 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
               );
             })}
           </div>
+
+          {food && canCorrect(food) && request.kind !== 'pick' && (
+            <div className="-my-1 flex justify-center">
+              <Button
+                variant="link"
+                onClick={() => {
+                  cancel();
+                  const q = new URLSearchParams({ mode: 'correct', food: food.id });
+                  if (food.barcode) q.set('barcode', food.barcode);
+                  if (when.date !== app.today) q.set('d', when.date);
+                  router.push(`/log/label?${q}`);
+                }}
+              >
+                Numbers wrong? Photograph the label
+              </Button>
+            </div>
+          )}
 
           <Notice tone="warn">{error ?? loadError}</Notice>
 
