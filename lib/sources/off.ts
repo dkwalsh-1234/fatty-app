@@ -16,6 +16,8 @@ export const OFF_FIELDS = [
   'product_quantity_unit',
   'quantity',
   'nutrition_data_per',
+  'data_quality_errors_tags',
+  'data_quality_warnings_tags',
 ] as const;
 
 type Nutriments = Record<string, number | string | undefined>;
@@ -32,7 +34,20 @@ export interface OffProduct {
   product_quantity_unit?: string;
   quantity?: string;
   nutrition_data_per?: string;
+  /** Arrays from the API; comma-separated strings in the bulk export. */
+  data_quality_errors_tags?: string[] | string;
+  data_quality_warnings_tags?: string[] | string;
 }
+
+/**
+ * Why a food's values should be checked against the pack. Shown on the amount sheet as "Check
+ * against pack".
+ * - derived_from_serving: no per-100 g value, so it was worked out from the per-serve one.
+ * - serving_mismatch: the per-serve and per-100 g values disagree by more than 10%.
+ * - off_quality: Open Food Facts flags the product's nutrition data itself.
+ * - implausible_value: a value no label could print (sodium above 0 but under 0.5 mg per 100 g).
+ */
+export type QualityFlag = 'derived_from_serving' | 'serving_mismatch' | 'off_quality' | 'implausible_value';
 
 const numOrNull = (v: unknown): number | null => {
   if (v === undefined || v === null || v === '') return null;
@@ -46,13 +61,68 @@ const positiveOrNull = (v: unknown): number | null => {
   return n != null && n > 0 ? n : null;
 };
 
+/** Grams (or ml) in one serve: serving_quantity, else parsed from serving_size ("1 bar (68 g)"). */
+export function servingGrams(p: Pick<OffProduct, 'serving_quantity' | 'serving_quantity_unit' | 'serving_size'>): number | null {
+  const unit = (p.serving_quantity_unit ?? '').trim().toLowerCase();
+  const q = positiveOrNull(p.serving_quantity);
+  if (q && (!unit || unit === 'g' || unit === 'ml')) return q;
+  const m = (p.serving_size ?? '').match(/(\d+(?:[.,]\d+)?)\s*(g|gr|grams?|ml|millilitres?)\b/i);
+  return m ? positiveOrNull(m[1]) : null;
+}
+
+/** Open Food Facts' own quality tags, only those about nutrition (not packaging or eco-score). */
+export function nutritionQualityTags(p: Pick<OffProduct, 'data_quality_errors_tags' | 'data_quality_warnings_tags'>): string[] {
+  const list = (v: string[] | string | undefined) => (Array.isArray(v) ? v : (v ?? '').split(',')).map((t) => t.trim()).filter(Boolean);
+  return [...list(p.data_quality_errors_tags), ...list(p.data_quality_warnings_tags)].filter((t) =>
+    /nutrition|nutrient|energy|kcal|salt|sodium|sugar|fat|protein|carbohydrate|fib(er|re)|serving/i.test(t),
+  );
+}
+
+/** Below this, a per-serve value that disagrees with per-100 g is rounding, not an error. */
+const ABS_TOLERANCE: Record<string, number> = { energy: 10, 'energy-kj': 10, 'energy-kcal': 3, sodium: 0.005 };
+
+/**
+ * One nutrient per 100 g. Only the *_100g field is read. When it's absent but a per-serve value and
+ * a serve size are known, per 100 g is worked out from them (flagged). When both are present they
+ * must agree within 10% (else flagged). Missing stays null, never 0.
+ */
+function per100(n: Nutriments, key: string, serveG: number | null, flags: Set<QualityFlag>): number | null {
+  const v100 = numOrNull(n[`${key}_100g`]);
+  const vServe = numOrNull(n[`${key}_serving`]);
+  if (v100 != null) {
+    if (vServe != null && serveG) {
+      const expected = (v100 * serveG) / 100;
+      const gap = Math.abs(vServe - expected);
+      if (gap > Math.max(0.1 * Math.max(expected, vServe), ABS_TOLERANCE[key] ?? 0.2)) flags.add('serving_mismatch');
+    }
+    return v100;
+  }
+  if (vServe != null && serveG) {
+    flags.add('derived_from_serving');
+    return (vServe * 100) / serveG;
+  }
+  return null;
+}
+
+const round1 = (n: number | null) => (n == null ? null : Math.round(n * 10) / 10);
+
 /** Maps an Open Food Facts product to a foods row. Returns null when there's no energy value (a miss). */
 export function mapOffProduct(barcode: string, p: OffProduct): FoodRow | null {
   const n = p.nutriments ?? {};
+  const serveG = servingGrams(p);
+  const flags = new Set<QualityFlag>();
   // energy-kj_100g first; energy_100g is also kJ on Open Food Facts; else kcal × 4.184.
-  const kj = numOrNull(n['energy-kj_100g']) ?? numOrNull(n['energy_100g']) ?? (numOrNull(n['energy-kcal_100g']) != null ? (numOrNull(n['energy-kcal_100g']) as number) * 4.184 : null);
+  const kcal = per100(n, 'energy-kcal', serveG, flags);
+  const kj = per100(n, 'energy-kj', serveG, flags) ?? per100(n, 'energy', serveG, flags) ?? (kcal != null ? kcal * 4.184 : null);
   if (kj == null) return null;
-  const sodiumG = numOrNull(n['sodium_100g']);
+  // Sodium is in grams on Open Food Facts. Above 0 but under 0.5 mg per 100 g is no printed value
+  // (the Clif Bar's 0.000000338 g was sodium typed in the wrong unit): unknown, and flagged.
+  let sodiumG = per100(n, 'sodium', serveG, flags);
+  if (sodiumG != null && sodiumG > 0 && sodiumG * 1000 < 0.5) {
+    sodiumG = null;
+    flags.add('implausible_value');
+  }
+  if (nutritionQualityTags(p).length) flags.add('off_quality');
   const unitText = `${p.product_quantity_unit ?? ''} ${p.quantity ?? ''} ${p.serving_quantity_unit ?? ''}`.toLowerCase();
   const liquid = /\bml\b|\bcl\b|\bl\b|litre|liter/.test(unitText);
   const name = (p.product_name || p.product_name_en || '').trim() || `Product ${barcode}`;
@@ -65,19 +135,20 @@ export function mapOffProduct(barcode: string, p: OffProduct): FoodRow | null {
     name,
     display_name: name,
     brand,
-    energy_kj: Math.round(kj * 10) / 10,
-    protein_g: numOrNull(n['proteins_100g']),
-    fat_g: numOrNull(n['fat_100g']),
-    sat_fat_g: numOrNull(n['saturated-fat_100g']),
-    trans_fat_g: numOrNull(n['trans-fat_100g']),
-    carbs_g: numOrNull(n['carbohydrates_100g']),
-    sugars_g: numOrNull(n['sugars_100g']),
-    fibre_g: numOrNull(n['fiber_100g']),
-    sodium_mg: sodiumG == null ? null : Math.round(sodiumG * 1000 * 10) / 10,
-    serving_g: positiveOrNull(p.serving_quantity),
+    energy_kj: round1(kj),
+    protein_g: per100(n, 'proteins', serveG, flags),
+    fat_g: per100(n, 'fat', serveG, flags),
+    sat_fat_g: per100(n, 'saturated-fat', serveG, flags),
+    trans_fat_g: per100(n, 'trans-fat', serveG, flags),
+    carbs_g: per100(n, 'carbohydrates', serveG, flags),
+    sugars_g: per100(n, 'sugars', serveG, flags),
+    fibre_g: per100(n, 'fiber', serveG, flags),
+    sodium_mg: sodiumG == null ? null : round1(sodiumG * 1000),
+    serving_g: serveG,
     pack_g: positiveOrNull(p.product_quantity),
     is_liquid: liquid,
     density_g_per_ml: null,
+    quality_flags: [...flags].sort(),
     raw: p,
     fetched_at: new Date().toISOString(),
   };

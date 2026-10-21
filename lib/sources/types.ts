@@ -24,6 +24,8 @@ export type FoodRow = {
   density_g_per_ml?: number | null;
   raw?: unknown;
   fetched_at?: string | null;
+  /** Why the values should be checked against the pack (see QualityFlag in ./off). */
+  quality_flags?: string[];
 } & Record<NutrientKey, number | null>;
 
 /** A household measure for a food, keyed for idempotent upserts. */

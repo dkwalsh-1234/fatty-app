@@ -73,6 +73,8 @@ export function devFixtures(today: string): Fixtures {
     id,
     source,
     source_id: null,
+    quality_flags: [],
+    superseded_by: null,
     visibility: source === 'meal' || source === 'user' ? 'private' : 'shared',
     created_by: null,
     barcode: null,
@@ -153,6 +155,18 @@ export function devFixtures(today: string): Fixtures {
         food: food('salad', 'Mixed salad leaves', 'ausnut', salad),
         measures: [measure('m-cup', 'salad', '1 cup', 30)],
         stats: { food_id: 'salad', use_count: 4, last_used_at: '2026-10-18T02:00:00Z', last_grams: 45, last_unit: 'g', last_amount: 45 },
+      },
+      // As Open Food Facts had it on 21 Oct: per-bar values under per 100 g, sodium unknown, flagged.
+      clif: {
+        food: food(
+          'clif',
+          'ClifBar Crunchy Peanut Butter',
+          'off',
+          p({ energy_kj: 1203, protein_g: 11, fat_g: 8, sat_fat_g: 1, trans_fat_g: null, carbs_g: 40, sugars_g: 17, fibre_g: 5, sodium_mg: null }),
+          { brand: 'Clif', barcode: '0722252101204', serving_g: 68, pack_g: 68, quality_flags: ['implausible_value', 'off_quality'] },
+        ),
+        measures: [],
+        stats: null,
       },
       // As FSANZ has it: a density, marked solid, no household measures, no serve size.
       coffee: {

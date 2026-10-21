@@ -77,6 +77,10 @@ export interface Food extends Per100 {
   is_liquid: boolean;
   density_g_per_ml: number | null;
   missing_nutrients: NutrientKey[];
+  /** Why the values should be checked against the pack; empty when nothing looks off. */
+  quality_flags: string[];
+  /** A label photo corrected this food: the food that replaces it. */
+  superseded_by: string | null;
   derived_from_food_id: string | null;
   created_at: string;
   updated_at: string;

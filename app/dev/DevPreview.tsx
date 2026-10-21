@@ -13,8 +13,8 @@ import { KEY_SCREEN_COPY } from '@/lib/ai/config';
 import { localDate } from '@/lib/dates';
 import { devFixtures, devProfile } from './fixtures';
 
-/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | sheet-coffee | goal | settings | aikey | confirm (&text=dev-unmatched, dev-mixed or dev-split); &key=1 gives the sample account a saved AI key */
-type ScreenName = 'today' | 'sheet' | 'sheet-ml' | 'sheet-meal' | 'sheet-coffee' | 'goal' | 'settings' | 'aikey' | 'confirm';
+/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | sheet-coffee | sheet-clif | goal | settings | aikey | confirm (&text=dev-unmatched, dev-mixed or dev-split); &key=1 gives the sample account a saved AI key */
+type ScreenName = 'today' | 'sheet' | 'sheet-ml' | 'sheet-meal' | 'sheet-coffee' | 'sheet-clif' | 'goal' | 'settings' | 'aikey' | 'confirm';
 
 export function DevPreview() {
   return (
@@ -84,7 +84,7 @@ if (typeof window !== 'undefined') {
 function OpenSheet({ screen }: { screen: string }) {
   const app = useApp();
   useEffect(() => {
-    const id = screen === 'sheet' ? 'salad' : screen === 'sheet-ml' ? 'milk' : screen === 'sheet-meal' ? 'meal-pasta' : screen === 'sheet-coffee' ? 'coffee' : null;
+    const id = screen === 'sheet' ? 'salad' : screen === 'sheet-ml' ? 'milk' : screen === 'sheet-meal' ? 'meal-pasta' : screen === 'sheet-coffee' ? 'coffee' : screen === 'sheet-clif' ? 'clif' : null;
     if (!id) return;
     const f = app.fixtures!.foods[id];
     app.openAmount({ kind: 'food', foodId: id, food: f.food, method: 'search', afterSave: 'stay' });

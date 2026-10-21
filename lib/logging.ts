@@ -3,8 +3,8 @@
 // Saving and deleting log entries, plus the Health Connect side effects in the Android wrapper.
 
 import { deleteHealthEntries, inWrapper, syncEntries, toSyncEntry } from './bridge';
-import { deleteEntries, logEntries, markSynced, updateEntry, type NewEntry } from './data';
-import type { LogEntry } from './types';
+import { deleteEntries, logEntries, markSynced, moveEntriesToCorrectedFood, updateEntry, type NewEntry } from './data';
+import type { Food, LogEntry } from './types';
 
 /** Tell the rest of the app the log changed (Today refreshes, the widget updates). */
 export function announceLogChanged() {
@@ -29,6 +29,14 @@ export async function saveEntryEdit(id: string, patch: Partial<NewEntry>, tz: st
   announceLogChanged();
   void syncToHealth([saved], tz);
   return saved;
+}
+
+/** "Update your N entries logged from the old values?": yes. Health Connect gets the new values. */
+export async function correctEntries(oldFoodId: string, food: Food, tz: string): Promise<number> {
+  const updated = await moveEntriesToCorrectedFood(oldFoodId, food);
+  announceLogChanged();
+  void syncToHealth(updated, tz);
+  return updated.length;
 }
 
 export async function removeEntries(ids: string[]): Promise<void> {
