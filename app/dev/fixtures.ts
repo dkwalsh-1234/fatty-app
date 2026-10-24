@@ -156,6 +156,12 @@ export function devFixtures(today: string): Fixtures {
         measures: [measure('m-cup', 'salad', '1 cup', 30)],
         stats: { food_id: 'salad', use_count: 4, last_used_at: '2026-10-18T02:00:00Z', last_grams: 45, last_unit: 'g', last_amount: 45 },
       },
+      // AUSNUT's egg, with its household measure.
+      egg: {
+        food: food('egg', 'Egg, chicken, whole, raw', 'ausnut', p({ energy_kj: 532, protein_g: 12.6, fat_g: 8.7, sat_fat_g: 2.7, trans_fat_g: 0, carbs_g: 0.3, sugars_g: 0.3, fibre_g: 0, sodium_mg: 140 })),
+        measures: [measure('m-egg', 'egg', '1 egg', 51)],
+        stats: null,
+      },
       // As Open Food Facts had it on 21 Oct: per-bar values under per 100 g, sodium unknown, flagged.
       clif: {
         food: food(

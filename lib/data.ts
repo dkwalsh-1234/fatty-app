@@ -4,6 +4,7 @@
 // Every function throws a plain Error with a message fit to show.
 
 import { addDays, dayBounds, type Meal } from './dates';
+import { countUnit, unitOptions } from './amount';
 import { NUTRIENT_KEYS, toPer100, type Per100 } from './nutrients';
 import { toProfile } from './profile';
 import { supabase } from './supabase/browser';
@@ -297,12 +298,14 @@ export interface SearchResult {
   score: number | null;
   /** 1 = every word matched, 2 = some words, 3 = similar spelling only. */
   tier: 1 | 2 | 3 | null;
+  /** The size it's counted in ("egg", 51 g), as on the amount sheet's counter; null for grams. */
+  natural?: { label: string; grams: number } | null;
 }
 
 export async function searchFoods(q: string, limit = 30): Promise<SearchResult[]> {
   const { data, error } = await supabase().rpc('search_foods', { q, lim: limit });
   if (error) fail(error, "Search didn't work");
-  return ((data as Record<string, unknown>[]) ?? []).map((r) => ({
+  const rows: SearchResult[] = ((data as Record<string, unknown>[]) ?? []).map((r) => ({
     ...(r as unknown as SearchResult),
     energy_kj: num(r.energy_kj),
     serving_g: num(r.serving_g),
@@ -312,6 +315,30 @@ export async function searchFoods(q: string, limit = 30): Promise<SearchResult[]
     score: num(r.score),
     tier: r.tier == null ? null : (Number(r.tier) as 1 | 2 | 3),
   }));
+  return withNaturalSizes(rows);
+}
+
+/**
+ * Each result's countable size ("1 egg", "1 slice, regular", "1 serve"), by the same rule as the
+ * amount sheet's counter (countUnit), so the row and the sheet agree. One query for all results;
+ * if it fails, the rows simply show per 100 g.
+ */
+async function withNaturalSizes(rows: SearchResult[]): Promise<SearchResult[]> {
+  const ids = rows.map((r) => r.id);
+  if (!ids.length) return rows;
+  const { data, error } = await supabase().from('food_measures').select('*').in('food_id', ids);
+  if (error) return rows;
+  const byFood = new Map<string, Measure[]>();
+  for (const m of data ?? []) {
+    const list = byFood.get(m.food_id as string) ?? [];
+    list.push({ ...(m as Measure), grams: Number(m.grams) });
+    byFood.set(m.food_id as string, list);
+  }
+  return rows.map((r) => {
+    const food = { name: r.name, display_name: r.display_name, source: r.source, is_liquid: r.is_liquid, density_g_per_ml: null, serving_g: r.serving_g, pack_g: null, total_weight_g: r.total_weight_g, serves: null };
+    const u = countUnit(food, unitOptions(food, byFood.get(r.id) ?? []));
+    return { ...r, natural: u ? { label: u.label, grams: u.grams } : null };
+  });
 }
 
 export async function getFood(id: string): Promise<Food> {

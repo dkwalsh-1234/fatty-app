@@ -14,11 +14,14 @@ import {
   buildChips,
   cleanTyped,
   convertAmount,
+  countText,
+  countUnit,
   GRAMS,
   mealPer100,
   measureChipLabel,
   naturalStart,
   parseTyped,
+  stepCount,
   unitGrams,
   unitOptions,
   type AmountChip,
@@ -164,8 +167,10 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
       // A label photo corrected this food: log the corrected one. (An edit keeps its own snapshot.)
       if (f.superseded_by && !edit) {
         const fixed = await getFood(f.superseded_by);
-        setCorrected(true);
-        return Promise.all([fixed, getMeasures(fixed.id), getStats(fixed.id)]);
+        // Say so for a label correction; a hidden FSANZ duplicate just switches quietly.
+        setCorrected(fixed.source === 'label');
+        // Your history (last amount, how often) carries over when the new food has none yet.
+        return Promise.all([fixed, getMeasures(fixed.id), getStats(fixed.id).then((st) => st ?? getStats(foodId))]);
       }
       return Promise.all([f, getMeasures(foodId), getStats(foodId)]);
     };
@@ -231,7 +236,13 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
     return food;
   }, [adjusted, ingredients, edit, food]);
 
-  const chips = useMemo(() => (food ? buildChips(food, units, stats) : []), [food, units, stats]);
+  // The counter: how many eggs (slices, bananas, serves) the grams are, and − and + to change it.
+  const counter = useMemo(() => (food ? countUnit(food, units) : null), [food, units]);
+  // Its own chip would repeat the counter, so it's left out.
+  const chips = useMemo(
+    () => (food ? buildChips(food, units, stats).filter((c) => !counter || (c.key !== `u:${counter.label}` && !(c.kind === 'serve' && counter.label === 'serve'))) : []),
+    [food, units, stats, counter],
+  );
   const preview = per100 && gramsNow != null ? scale(per100, gramsNow) : null;
 
   // Today's totals without this entry, for the bars on each tile.
@@ -256,6 +267,21 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
       setUnit(GRAMS);
       setTyped(amountString(grams));
     }
+    setTouched(false);
+    setPrefilled(false);
+    inputRef.current?.focus();
+  }
+
+  /** Fill in grams (or ml when you're in ml), as a chip or the counter does. */
+  function fillGrams(grams: number | null) {
+    if (grams == null) setTyped('');
+    else if (unit.kind === 'ml') setTyped(amountString(grams / unit.grams));
+    else {
+      setUnit(GRAMS);
+      setTyped(amountString(grams));
+    }
+    setActiveChip(null);
+    setChipCounts({});
     setTouched(false);
     setPrefilled(false);
     inputRef.current?.focus();
@@ -485,6 +511,19 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
                   {u.hint && <span className="font-normal opacity-70"> · {u.hint}</span>}
                 </Chip>
               ))}
+            </div>
+          )}
+
+          {!picking && counter && (
+            <div className="flex items-center justify-center gap-4" role="group" aria-label={`How many: ${counter.label}`}>
+              <RoundButton icon="minus" label={`One fewer ${counter.label}`} size={44} onClick={() => fillGrams(stepCount(gramsNow, counter, -1))} />
+              <span className="flex min-w-[132px] flex-col items-center leading-tight">
+                <span className="text-[20px] tnum">
+                  <b className="font-semibold">{countText(gramsNow, counter)}</b> <span className="text-ink2">×</span> {counter.label}
+                </span>
+                <span className="text-[13px] text-ink2 tnum">{counter.hint ? `${counter.hint} each` : ' '}</span>
+              </span>
+              <RoundButton icon="plus" label={`One more ${counter.label}`} size={44} onClick={() => fillGrams(stepCount(gramsNow, counter, 1))} />
             </div>
           )}
 
