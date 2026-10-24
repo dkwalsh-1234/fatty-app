@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { ringGeometry, splitEnergy } from '@/design/components/ring';
 import { targetState } from '@/design/components/TargetBar';
-import { buildChips, cleanTyped, convertAmount, mealPer100, measureChipLabel, naturalStart, parseTyped, unitOptions } from '@/lib/amount';
+import { buildChips, cleanTyped, convertAmount, countText, countUnit, mealPer100, measureChipLabel, naturalStart, parseTyped, stepCount, unitOptions } from '@/lib/amount';
 import { barcodeVariants, hasValidCheckDigit, normalizeBarcode, upcEToUpcA } from '@/lib/barcode';
 import { addDays, ageOn, dayBounds, localDate, mealForTime, zonedToUtc } from '@/lib/dates';
 import { evaluateGoal, goalLine, todaysTargetLine } from '@/components/forms/GoalForm';
@@ -14,6 +14,7 @@ import { parseSearch, parseText } from '@/lib/parse';
 import { cleanEstimate, cleanResolve, componentsForGrams, isWeakMatch } from '@/lib/resolution';
 import { mapOffProduct } from '@/lib/sources/off';
 import { mapOffAuRow } from '@/lib/sources/off-au';
+import { afcdDuplicates } from '@/lib/sources/fsanz-dedupe';
 import { checkGoal, computeTarget, restingKcal, roundTarget, targetsConflict } from '@/lib/target';
 import type { BurnRow, Food, FoodStats, Goal, LogEntry, Profile } from '@/lib/types';
 import { widgetSummary } from '@/lib/widget';
@@ -478,6 +479,58 @@ describe('units people think in (testing on 20 Oct)', () => {
     expect(amountText(1, 'measure', 'regular cup')).toBe('1 regular cup');
     expect(amountText(2, 'measure', 'slice')).toBe('2 × slice');
     expect(amountText(250, 'ml')).toBe('250 ml');
+  });
+});
+
+describe('counting eggs (testing on 25 Oct)', () => {
+  const base = { display_name: null, source: 'ausnut' as const, is_liquid: false, density_g_per_ml: null, serving_g: null, pack_g: null, total_weight_g: null, serves: null };
+  const m = (label: string, grams: number, rank: number) => ({ id: label, food_id: 'f', label, grams, source: 'ausnut' as const, owner_id: null, rank });
+  const egg = { ...base, name: 'Egg, chicken, whole, raw' };
+  const eggUnits = unitOptions(egg, [m('1 egg', 51, 0)]);
+
+  it('counts a food in its own measure, preferring medium or regular', () => {
+    expect(countUnit(egg, eggUnits)?.label).toBe('egg');
+    const banana = { ...base, name: 'Banana, cavendish, peeled, raw' };
+    const bananaUnits = unitOptions(banana, [m('1 banana, large', 145.6, 0), m('1 banana, medium', 127.4, 1), m('1 banana, small', 71.5, 2)]);
+    expect(countUnit(banana, bananaUnits)).toMatchObject({ label: 'banana, medium', grams: 127.4 });
+    const bread = { ...base, name: 'Bread, white, commercial' };
+    expect(countUnit(bread, unitOptions(bread, [m('1 slice, regular', 33, 0), m('1 cup, crumbs', 45, 1)]))?.label).toBe('slice, regular');
+  });
+
+  it('counts a café coffee in regular cups, a product in serves, and a tomato not at all', () => {
+    const coffee = { ...base, name: 'Coffee, flat white/cappuccino/latte, single shot & cow\'s milk', density_g_per_ml: 1.02 };
+    expect(countUnit(coffee, unitOptions(coffee, []))?.label).toBe('regular cup');
+    const cereal = { ...base, name: 'Weet-Bix', source: 'off' as const, serving_g: 30 };
+    expect(countUnit(cereal, unitOptions(cereal, []))).toMatchObject({ label: 'serve', grams: 30 });
+    const tomato = { ...base, name: 'Tomato, common, raw' };
+    expect(countUnit(tomato, unitOptions(tomato, []))).toBeNull();
+    expect(countUnit({ ...base, name: 'Tuesday pasta', source: 'meal' as const, total_weight_g: 1200, serves: 4 }, [])).toBeNull();
+  });
+
+  it('steps the counter in whole eggs and reads any grams back as eggs', () => {
+    const u = countUnit(egg, eggUnits)!;
+    expect(stepCount(null, u, 1)).toBe(51);
+    expect(stepCount(51, u, 1)).toBe(102);
+    expect(countText(102, u)).toBe('2');
+    expect(stepCount(102, u, -1)).toBe(51);
+    expect(stepCount(51, u, -1)).toBeNull();
+    // Typed 80 g: about 1.6 eggs; + goes to 2, − to 1.
+    expect(countText(80, u)).toBe('≈ 1.6');
+    expect(stepCount(80, u, 1)).toBe(102);
+    expect(stepCount(80, u, -1)).toBe(51);
+    expect(countText(null, u)).toBe('0');
+  });
+
+  it('fills "2 eggs" typed in Search in as two eggs of grams', () => {
+    expect(naturalStart(egg, eggUnits, null, { count: 2 })).toMatchObject({ unit: { kind: 'g' }, amount: 102 });
+  });
+
+  it('hides AFCD foods that AUSNUT lists under the same name, ignoring case and punctuation', () => {
+    const pairs = afcdDuplicates(
+      [{ id: 'a1', name: 'Egg, chicken, whole, raw' }, { id: 'a2', name: 'Banana, cavendish, peeled, raw' }],
+      [{ id: 'f1', name: 'Egg, chicken, whole, raw' }, { id: 'f2', name: 'egg chicken whole raw' }, { id: 'f3', name: 'Egg, chicken, whole, omega-3 polyunsaturate enriched, raw' }],
+    );
+    expect(pairs).toEqual([{ afcdId: 'f1', ausnutId: 'a1' }, { afcdId: 'f2', ausnutId: 'a1' }]);
   });
 });
 

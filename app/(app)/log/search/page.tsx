@@ -37,6 +37,8 @@ interface RowData {
   is_liquid: boolean;
   energy_kj: number | null;
   last: { grams: number; amount: number | null; unit: 'g' | 'ml' | 'measure' | null; measure?: string | null } | null;
+  /** The size it's counted in ("egg", 51 g), shown instead of "per 100 g". */
+  natural?: { label: string; grams: number } | null;
 }
 
 const fromListed = (l: ListedFood): RowData => ({
@@ -69,6 +71,7 @@ const fromResult = (r: SearchResult): RowData => ({
   is_liquid: r.is_liquid,
   energy_kj: r.energy_kj,
   last: r.last_grams ? { grams: r.last_grams, amount: r.last_amount, unit: r.last_unit, measure: r.last_measure } : null,
+  natural: r.natural ?? null,
 });
 
 function Search() {
@@ -305,7 +308,9 @@ function List({ title, rows, unit, onOpen, showSource, more }: {
       </div>
       <section className="rounded-log-card bg-surface pl-5 pr-1.5 shadow-[var(--cc-card-shadow)]">
         {rows.map((r) => {
-          const kj = r.energy_kj == null ? null : r.last ? (r.energy_kj * r.last.grams) / 100 : r.energy_kj;
+          // Your last amount if you've had it; else the size it's counted in ("1 egg"); else per 100 g.
+          const grams = r.last?.grams ?? r.natural?.grams ?? null;
+          const kj = r.energy_kj == null ? null : grams ? (r.energy_kj * grams) / 100 : r.energy_kj;
           return (
             <button
               key={r.id}
@@ -321,14 +326,16 @@ function List({ title, rows, unit, onOpen, showSource, more }: {
                   </span>
                 )}
               </span>
-              <span className="text-right text-[13px] text-ink2 tnum">
+              <span className="max-w-[38%] shrink-0 truncate text-right text-[13px] text-ink2 tnum">
                 {r.last
                   ? r.last.unit && r.last.unit !== 'g' && r.last.amount
                     ? amountText(r.last.amount, r.last.unit, r.last.measure)
                     : amountText(r.last.grams, 'g')
-                  : 'per 100 g'}
+                  : r.natural
+                    ? `1 ${r.natural.label}`
+                    : 'per 100 g'}
               </span>
-              <span className="w-12 text-right text-[15px] font-medium tnum">{kj == null ? '–' : r.last ? int(unit === 'kj' ? kj : kj / 4.184) : energyText(kj, unit, false)}</span>
+              <span className="w-12 text-right text-[15px] font-medium tnum">{kj == null ? '–' : grams ? int(unit === 'kj' ? kj : kj / 4.184) : energyText(kj, unit, false)}</span>
             </button>
           );
         })}

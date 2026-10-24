@@ -14,7 +14,8 @@
     "import:afcd": "tsx scripts/import-afcd.ts",
     "deploy": "bash scripts/deploy.sh",
     "fetch:off-au": "tsx --env-file=.env.local scripts/fetch-off-au.ts",
-    "import:off-au": "tsx scripts/import-off-au.ts"
+    "import:off-au": "tsx scripts/import-off-au.ts",
+    "dedupe:fsanz": "tsx scripts/dedupe-fsanz.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

@@ -111,6 +111,43 @@ export function unitOptions(food: UnitFood, measures: Measure[]): AmountUnit[] {
 }
 
 /**
+ * The one measure a food is counted in, for the amount sheet's counter and the size shown in search
+ * results ("1 egg · 65"): FSANZ's countable household measure (1 egg, 1 slice, 1 banana), preferring
+ * medium or regular, else its most-used; else a typical size (a regular café cup, a slice of bread);
+ * else a pack's serve. Null when there's nothing natural to count, like a tomato: grams then.
+ */
+export function countUnit(food: UnitFood, units: AmountUnit[]): AmountUnit | null {
+  if (food.source === 'meal') return null;
+  const countable = units.filter((u) => u.kind === 'measure' && u.countable);
+  const household = countable.filter((u) => !u.estimate);
+  const pick =
+    household.find((u) => /\b(medium|regular)\b/i.test(u.label)) ??
+    household[0] ??
+    countable.find((u) => u.label === 'regular cup') ??
+    countable[0];
+  if (pick) return pick;
+  if (food.serving_g) return { kind: 'measure', label: 'serve', grams: food.serving_g, hint: g(food.serving_g), estimate: false, countable: true };
+  return null;
+}
+
+/** How many of a measure some grams are: 102 g of egg is 2. */
+export const countOf = (grams: number | null, unit: AmountUnit) => (grams && unit.grams > 0 ? grams / unit.grams : 0);
+
+/** The counter's − and +: one fewer or one more whole measure, in grams (null at none). */
+export function stepCount(grams: number | null, unit: AmountUnit, by: 1 | -1): number | null {
+  const n = countOf(grams, unit);
+  const next = by > 0 ? Math.floor(n + 1e-6) + 1 : Math.ceil(n - 1e-6) - 1;
+  return next > 0 ? Math.round(next * unit.grams * 10) / 10 : null;
+}
+
+/** "2", or "≈ 1.6" when the grams aren't a whole number of the measure. */
+export function countText(grams: number | null, unit: AmountUnit): string {
+  const n = countOf(grams, unit);
+  if (!n) return '0';
+  return Math.abs(n - Math.round(n)) < 0.02 ? String(Math.round(n)) : `≈ ${(Math.round(n * 10) / 10).toFixed(1)}`;
+}
+
+/**
  * Where the amount field starts: in grams, as the brief says. What you typed in Search ("45 salad",
  * "250ml milk", "2 eggs", filled in as grams of the food's first measure); else your last amount,
  * in grams (or ml if that's what you used); else empty.
@@ -124,7 +161,7 @@ export function naturalStart(
   const ml = units.find((u) => u.kind === 'ml');
   if (prefill?.amount) return { unit: prefill.unit === 'ml' && ml ? ml : GRAMS, amount: prefill.amount, fromLast: false };
   if (prefill?.count) {
-    const m = units.find((u) => u.kind === 'measure' && u.countable);
+    const m = countUnit(food, units);
     if (m) return { unit: GRAMS, amount: Math.round(m.grams * prefill.count * 10) / 10, fromLast: false, chip: { key: `u:${m.label}`, count: prefill.count } };
   }
   if (stats?.last_grams) {
