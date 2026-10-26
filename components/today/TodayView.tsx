@@ -16,6 +16,7 @@ import { NUTRIENT_BY_KEY, type NutrientKey } from '@/lib/nutrients';
 import type { EnergyUnit, LogEntry } from '@/lib/types';
 import { PRECISION_NOTE, TargetBreakdownCard } from '../app/TargetBreakdown';
 import { DashedChip, Icon, MacroDot, MoreDots, Sheet } from '../ui';
+import { BreakdownSheet } from './BreakdownSheet';
 
 const P = tokens.color.pine;
 
@@ -39,24 +40,49 @@ export function TodayView({ day, title, capsDate, weightKg, unit, activityLevel,
   handlers: TodayHandlers;
   notice?: ReactNode;
 }) {
+  // Tap a number to see which of today's foods made it up.
+  const [breakdownOf, setBreakdownOf] = useState<NutrientKey | null>(null);
   return (
     <div className="mx-auto w-full max-w-[480px] pb-dock">
-      <Hero day={day} title={title} capsDate={capsDate} weightKg={weightKg} unit={unit} activityLevel={activityLevel} onWeigh={handlers.onWeigh} onMenu={handlers.onMenu} />
+      <Hero
+        day={day}
+        title={title}
+        capsDate={capsDate}
+        weightKg={weightKg}
+        unit={unit}
+        activityLevel={activityLevel}
+        onWeigh={handlers.onWeigh}
+        onMenu={handlers.onMenu}
+        onBreakdown={setBreakdownOf}
+      />
       <div className="flex flex-col gap-2.5 px-4 pt-4">
         {notice}
-        <TargetsCard day={day} unit={unit} />
-        <MoreNutrients day={day} />
+        <TargetsCard day={day} unit={unit} onBreakdown={setBreakdownOf} />
+        <MoreNutrients day={day} onBreakdown={setBreakdownOf} />
         <h2 className="caps mx-1 mb-0 mt-3 text-ink2">Log</h2>
         {day.groups.map((g) => (
           <LogGroup key={g.meal} group={g} unit={unit} missingKeys={missingKeys} onEntry={handlers.onEntry} onMenu={() => handlers.onGroupMenu(g)} />
         ))}
       </div>
       <LogDock href={handlers.logHref} />
+      {breakdownOf && (
+        <BreakdownSheet
+          day={day}
+          unit={unit}
+          nutrient={breakdownOf}
+          onNutrient={setBreakdownOf}
+          onClose={() => setBreakdownOf(null)}
+          onEntry={(e) => {
+            setBreakdownOf(null);
+            handlers.onEntry(e);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function Hero({ day, title, capsDate, weightKg, unit, activityLevel, onWeigh, onMenu }: {
+function Hero({ day, title, capsDate, weightKg, unit, activityLevel, onWeigh, onMenu, onBreakdown }: {
   day: DayView;
   title: string;
   capsDate: string;
@@ -65,6 +91,7 @@ function Hero({ day, title, capsDate, weightKg, unit, activityLevel, onWeigh, on
   activityLevel: ActivityLevel | null;
   onWeigh: () => void;
   onMenu: () => void;
+  onBreakdown: (k: NutrientKey) => void;
 }) {
   const [grams, setGrams] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
@@ -135,7 +162,7 @@ function Hero({ day, title, capsDate, weightKg, unit, activityLevel, onWeigh, on
           )}
         </Link>
         <div className="flex flex-wrap justify-center gap-x-3.5 gap-y-1 pt-1.5">
-          <MacroLegend eaten={day.eaten} />
+          <MacroLegend eaten={day.eaten} onSelect={(m) => onBreakdown(m === 'protein' ? 'protein_g' : m === 'carbs' ? 'carbs_g' : m === 'fat' ? 'fat_g' : 'energy_kj')} />
         </div>
       </div>
       {day.target && (
@@ -220,7 +247,7 @@ function HaloGlyph({ progress }: { progress: number }) {
   );
 }
 
-function TargetsCard({ day, unit }: { day: DayView; unit: EnergyUnit }) {
+function TargetsCard({ day, unit, onBreakdown }: { day: DayView; unit: EnergyUnit; onBreakdown: (k: NutrientKey) => void }) {
   if (!day.targetRows.length) {
     return (
       <section className="rounded-card bg-surface px-5 py-[18px] shadow-[var(--cc-card-shadow)]">
@@ -239,8 +266,14 @@ function TargetsCard({ day, unit }: { day: DayView; unit: EnergyUnit }) {
         const isEnergy = r.info.key === 'energy_kj';
         const isSodium = r.info.key === 'sodium_mg';
         return (
-          <TargetBar
+          <button
             key={r.info.key}
+            type="button"
+            onClick={() => onBreakdown(r.info.key)}
+            aria-label={`${r.info.label}: which foods`}
+            className="press -mx-2 block w-[calc(100%+16px)] rounded-[14px] border-0 bg-transparent px-2 py-1 text-left text-ink"
+          >
+          <TargetBar
             name={r.info.label}
             value={r.value}
             unit={isEnergy ? unitLabel(unit) : r.info.unit}
@@ -252,13 +285,14 @@ function TargetsCard({ day, unit }: { day: DayView; unit: EnergyUnit }) {
             aiEstimates={r.ai}
             format={isEnergy || isSodium ? int : grams}
           />
+          </button>
         );
       })}
     </section>
   );
 }
 
-function MoreNutrients({ day }: { day: DayView }) {
+function MoreNutrients({ day, onBreakdown }: { day: DayView; onBreakdown: (k: NutrientKey) => void }) {
   const sodium = day.otherNutrients.find((n) => n.info.key === 'sodium_mg');
   const rest = day.otherNutrients.filter((n) => n.info.key !== 'sodium_mg');
   if (!sodium && !rest.length) return null;
@@ -266,7 +300,12 @@ function MoreNutrients({ day }: { day: DayView }) {
     <section aria-label="More nutrients" className="flex flex-col gap-3 rounded-card bg-surface px-5 py-4 shadow-[var(--cc-card-shadow)]">
       {sodium && (
         <>
-          <div className="flex min-h-[26px] items-baseline justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => onBreakdown('sodium_mg')}
+            aria-label="Sodium: which foods"
+            className="press -mx-2 flex min-h-[26px] w-[calc(100%+16px)] items-baseline justify-between gap-2 rounded-[14px] border-0 bg-transparent px-2 py-1 text-left text-ink"
+          >
             <span className="flex items-center gap-2 text-base font-medium">
               Sodium
               {sodium.incomplete > 0 && <DashedChip>incomplete · {sodium.incomplete}</DashedChip>}
@@ -276,14 +315,20 @@ function MoreNutrients({ day }: { day: DayView }) {
               {sodium.value == null ? '–' : int(sodium.value)} mg{' '}
               {sodium.value != null && <span className="text-sm font-normal text-ink2">({saltText(sodium.value)})</span>}
             </span>
-          </div>
+          </button>
           {rest.length > 0 && <div className="h-px bg-separator" />}
         </>
       )}
       {rest.length > 0 && (
         <div className="grid grid-cols-2 gap-x-5 gap-y-3">
           {rest.map((n) => (
-            <div key={n.info.key} className="flex flex-col gap-0.5">
+            <button
+              key={n.info.key}
+              type="button"
+              onClick={() => onBreakdown(n.info.key)}
+              aria-label={`${n.info.label}: which foods`}
+              className="press -mx-2 flex flex-col items-start gap-0.5 rounded-[14px] border-0 bg-transparent px-2 py-1 text-left text-ink"
+            >
               <span className="flex items-center gap-1.5 text-xs text-ink2">
                 {n.info.colour && <MacroDot colour={n.info.colour} size={7} />}
                 {n.info.label === 'Dietary fibre' ? 'Fibre' : n.info.label}
@@ -291,7 +336,7 @@ function MoreNutrients({ day }: { day: DayView }) {
                 {n.ai > 0 && <DashedChip title="Includes AI estimates, not values from data">AI est. · {n.ai}</DashedChip>}
               </span>
               <span className="text-[19px] font-medium tnum">{n.value == null ? '–' : `${n.value >= 100 ? int(n.value) : one(n.value)} g`}</span>
-            </div>
+            </button>
           ))}
         </div>
       )}

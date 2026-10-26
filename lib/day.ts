@@ -4,7 +4,7 @@
 import { goalFractions, splitEnergy, type ActivityKind, type MacroEnergy } from '@/design/components/ring';
 import { addDays, dayBounds, MEAL_ORDER, type Meal } from './dates';
 import { energyIn, kcalIn } from './format';
-import { NUTRIENT_BY_ID, NUTRIENTS, scale, sumEntries, type NutrientInfo, type Totals } from './nutrients';
+import { NUTRIENT_BY_ID, NUTRIENTS, scale, sumEntries, type NutrientInfo, type NutrientKey, type Totals } from './nutrients';
 import { computeTarget, type BurnDay, type TargetBreakdown } from './target';
 import { AI_ESTIMATE_TAG, type BurnRow, type EnergyUnit, type Goal, type LogEntry, type Profile, type TargetRow, type WeighIn } from './types';
 
@@ -203,6 +203,28 @@ export function buildDay(opts: {
 export const isAiEstimate = (e: Pick<LogEntry, 'source_snapshot'>) => e.source_snapshot === AI_ESTIMATE_TAG;
 
 const entryForTotals = (e: LogEntry) => ({ per100: e.per100_snapshot, grams: e.grams, ai: isAiEstimate(e) });
+
+/**
+ * What made up a total on Today: each entry's share of one nutrient, biggest first, and the entries
+ * with no value for it (so the total is "at least"). Tap a number on Today to see this.
+ */
+export function breakdown(entries: LogEntry[], key: NutrientKey): {
+  total: number;
+  rows: { entry: LogEntry; value: number; share: number }[];
+  missing: LogEntry[];
+} {
+  const rows: { entry: LogEntry; value: number; share: number }[] = [];
+  const missing: LogEntry[] = [];
+  for (const e of entries) {
+    const v = scale(e.per100_snapshot, e.grams)[key];
+    if (v == null) missing.push(e);
+    else if (v > 0) rows.push({ entry: e, value: v, share: 0 });
+  }
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  for (const r of rows) r.share = total > 0 ? r.value / total : 0;
+  rows.sort((a, b) => b.value - a.value || a.entry.eaten_at.localeCompare(b.entry.eaten_at));
+  return { total, rows, missing };
+}
 
 /** Energy for a single entry, in kJ (null if the food has no energy value). */
 export const entryEnergyKj = (e: LogEntry) => scale(e.per100_snapshot, e.grams).energy_kj;

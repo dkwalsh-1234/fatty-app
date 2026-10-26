@@ -147,22 +147,41 @@ export function RingCaption({ target, activityKcal, activity }: { target: number
 }
 
 /** Macro legend under the ring: dot, name, kcal. */
-export function MacroLegend({ eaten }: { eaten: MacroEnergy }) {
+/** With onSelect, each item is a button (Today: tap to see which foods made it up). */
+export function MacroLegend({ eaten, onSelect }: { eaten: MacroEnergy; onSelect?: (macro: 'protein' | 'carbs' | 'fat' | 'other') => void }) {
   const items = [
-    ['Protein', P.protein, eaten.protein],
-    ['Carbs', P.carbs, eaten.carbs],
-    ['Fat', P.fat, eaten.fat],
-    ['Other', P.other, eaten.other],
+    ['protein', 'Protein', P.protein, eaten.protein],
+    ['carbs', 'Carbs', P.carbs, eaten.carbs],
+    ['fat', 'Fat', P.fat, eaten.fat],
+    ['other', 'Other', P.other, eaten.other],
   ] as const;
+  const itemStyle = { display: 'flex', alignItems: 'center', gap: 6, color: P.mint } as const;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: 14, rowGap: 4, fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-      {items.map(([name, col, kcal]) => (
-        <span key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, color: P.mint }}>
-          <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: col }} />
-          {name}
-          <span style={{ color: P.mint2 }}>{int(kcal)}</span>
-        </span>
-      ))}
+      {items.map(([key, name, col, kcal]) => {
+        const inner = (
+          <>
+            <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: col }} />
+            {name}
+            <span style={{ color: P.mint2 }}>{int(kcal)}</span>
+          </>
+        );
+        return onSelect ? (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onSelect(key)}
+            aria-label={`${name} ${int(kcal)}: which foods`}
+            style={{ ...itemStyle, minHeight: 32, padding: '0 4px', border: 0, background: 'transparent', font: 'inherit', cursor: 'pointer' }}
+          >
+            {inner}
+          </button>
+        ) : (
+          <span key={key} style={itemStyle}>
+            {inner}
+          </span>
+        );
+      })}
     </div>
   );
 }
