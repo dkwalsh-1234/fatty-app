@@ -7,7 +7,7 @@ import { barcodeVariants, hasValidCheckDigit, normalizeBarcode, upcEToUpcA } fro
 import { addDays, ageOn, dayBounds, localDate, mealForTime, zonedToUtc } from '@/lib/dates';
 import { evaluateGoal, goalLine, todaysTargetLine } from '@/components/forms/GoalForm';
 import { captionParts } from '@/lib/caption';
-import { buildDay, pickBurn, targetFor } from '@/lib/day';
+import { breakdown, buildDay, pickBurn, targetFor } from '@/lib/day';
 import { amountText, nutrientText, saltText } from '@/lib/format';
 import { emptyPer100, scale, sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { parseSearch, parseText } from '@/lib/parse';
@@ -479,6 +479,34 @@ describe('units people think in (testing on 20 Oct)', () => {
     expect(amountText(1, 'measure', 'regular cup')).toBe('1 regular cup');
     expect(amountText(2, 'measure', 'slice')).toBe('2 × slice');
     expect(amountText(250, 'ml')).toBe('250 ml');
+  });
+});
+
+describe("what made up today's numbers (27 Oct)", () => {
+  const e = (id: string, name: string, grams: number, per: Partial<Per100>, at = '2026-10-27T01:00:00Z'): LogEntry => ({
+    id, owner_id: 'u', eaten_at: at, meal: 'breakfast', food_id: null, food_name_snapshot: name, source_snapshot: null, grams, entered_amount: grams,
+    entered_unit: 'g', entered_measure: null, per100_snapshot: { ...emptyPer100(), ...per }, ingredient_adjustments: null, is_estimate: false,
+    method: 'search', meal_photo_id: null, hc_synced_at: null, created_at: '', updated_at: '',
+  });
+
+  it("lists each food's protein, biggest first, with its share, and the foods with no value", () => {
+    const b = breakdown(
+      [
+        e('egg', 'Egg', 102, { protein_g: 12.6 }),
+        e('wrap', 'Chicken wrap', 280, { protein_g: 30.7 }),
+        e('coffee', 'Long black', 310, { protein_g: 0 }),
+        e('bar', 'Mystery bar', 68, { protein_g: null }),
+      ],
+      'protein_g',
+    );
+    expect(b.rows.map((r) => r.entry.id)).toEqual(['wrap', 'egg']);
+    expect(b.total).toBeCloseTo(85.96 + 12.852, 6);
+    expect(b.rows[0].share).toBeCloseTo(85.96 / (85.96 + 12.852), 6);
+    expect(b.missing.map((x) => x.id)).toEqual(['bar']);
+  });
+
+  it('is empty with nothing logged', () => {
+    expect(breakdown([], 'sodium_mg')).toEqual({ total: 0, rows: [], missing: [] });
   });
 });
 

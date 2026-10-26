@@ -31,10 +31,10 @@ import { DEFAULT_MEAL_BOUNDARIES, localDate, localTime, MEAL_LABEL, MEAL_ORDER, 
 import { getFood, getMeasures, getStats, mealIngredients, saveMeal } from '@/lib/data';
 import { energyIn, energyText, int, nutrientText, saltText } from '@/lib/format';
 import { removeEntries, saveEntries, saveEntryEdit } from '@/lib/logging';
-import { NUTRIENTS, scale, type Per100 } from '@/lib/nutrients';
+import { NUTRIENT_BY_KEY, NUTRIENTS, scale, type NutrientKey, type Per100 } from '@/lib/nutrients';
 import type { FoodSource } from '@/lib/sources/types';
 import { SOURCE_TAG, type Food, type FoodStats, type IngredientAdjustment, type LogEntry, type LogMethod, type Measure, type MealIngredient } from '@/lib/types';
-import { Button, Chip, cx, Field, Icon, Notice, RoundButton, Sheet } from '../ui';
+import { Button, Chip, cx, Field, Icon, MacroDot, Notice, RoundButton, Sheet } from '../ui';
 import { useApp, useDay } from './AppProvider';
 
 export type AmountRequest =
@@ -77,6 +77,29 @@ function entryUnit(e: LogEntry): AmountUnit {
 }
 
 const sameUnit = (a: AmountUnit, b: AmountUnit) => a.kind === b.kind && a.label === b.label;
+
+const SUMMARY_LABEL: Record<NutrientKey, string> = {
+  energy_kj: 'Energy',
+  protein_g: 'Protein',
+  carbs_g: 'Carbs',
+  fat_g: 'Fat',
+  sat_fat_g: 'Sat fat',
+  trans_fat_g: 'Trans fat',
+  sugars_g: 'Sugars',
+  fibre_g: 'Fibre',
+  sodium_mg: 'Sodium',
+};
+
+/** Chips in one row that scrolls sideways when there are more than fit, centred when they fit. */
+function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none]">
+      <div role="group" aria-label={label} className="mx-auto flex w-max gap-2">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 /** In plain words, the first reason a food's values should be checked against the pack. */
 function checkReason(flags: string[]): string {
@@ -136,6 +159,15 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
   // unit) and converts one you didn't (a prefill or a chip).
   const [touched, setTouched] = useState(() => request.kind === 'food' && !!request.prefill?.amount);
   const [picking, setPicking] = useState(false);
+  const [allNutrients, setAllNutrients] = useState(false);
+  // Less room when the keyboard is up: the app shrinks the page to the space above it.
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const fit = () => setCompact(window.innerHeight < 640);
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
   const [typed, setTyped] = useState(() => {
     if (edit) return amountString(edit.entered_amount);
     if (request.kind === 'pick' && request.initialGrams) return amountString(request.initialGrams);
@@ -395,8 +427,20 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
   }
 
   const energyNow = preview?.energy_kj ?? null;
-  // The figure is 84 px as designed, shrinking for long amounts so the capsule fits a phone.
-  const figureSize = typed.length <= 3 ? 84 : typed.length === 4 ? 70 : 58;
+  // The figure is 84 px as designed, shrinking for long amounts so the capsule fits a phone, and
+  // smaller again when the keyboard is up (the sheet then has about 470 px), so Save stays in view.
+  const figureSize = compact ? (typed.length <= 3 ? 60 : typed.length === 4 ? 52 : 44) : typed.length <= 3 ? 84 : typed.length === 4 ? 70 : 58;
+
+  // One line of what matters while logging: protein, carbs, fat, and anything you have a target
+  // for (red when this amount would take you over a limit). "All nutrients" shows the rest.
+  const summary = (['protein_g', 'carbs_g', 'fat_g', ...(day?.targetRows.map((r) => r.info.key) ?? [])] as NutrientKey[])
+    .filter((k, i, all) => k !== 'energy_kj' && all.indexOf(k) === i)
+    .map((k) => {
+      const v = preview ? preview[k] : null;
+      const row = day?.targetRows.find((r) => r.info.key === k);
+      const over = !!row && row.direction === 'noMoreThan' && v != null && (baseTotals?.[k] ?? 0) + v > row.max;
+      return { key: k, label: SUMMARY_LABEL[k], text: per100 && per100[k] == null ? '–' : nutrientText(k, v ?? 0, unitPref), over, colour: NUTRIENT_BY_KEY[k].colour };
+    });
   const width = `${Math.max(1, typed.length) * 0.56 + 0.06}em`;
 
   return (
@@ -413,7 +457,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
           mealName={name}
         />
       ) : (
-        <form onSubmit={submit} className="flex flex-col gap-3.5">
+        <form onSubmit={submit} className={cx('flex flex-col', compact ? 'gap-2.5' : 'gap-3.5')}>
           <div className="flex items-center justify-between">
             <RoundButton icon="close" label="Close" onClick={cancel} size={32} />
             <div className="flex min-w-0 flex-col items-center gap-0.5 px-1 text-center">
@@ -424,13 +468,13 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
                     cancel();
                     router.push(`/foods/${food.id}`);
                   }}
-                  className="max-w-full border-0 bg-transparent p-0 text-[18px] font-semibold text-ink"
+                  className="max-w-full border-0 bg-transparent p-0 text-[17px] font-semibold text-ink"
                   aria-label={`${name}: details, measures and edit`}
                 >
                   <span className="line-clamp-2 leading-tight">{name}</span>
                 </button>
               ) : (
-                <span className="line-clamp-2 max-w-full text-[18px] font-semibold leading-tight">{name || '…'}</span>
+                <span className="line-clamp-2 max-w-full text-[17px] font-semibold leading-tight">{name || '…'}</span>
               )}
               <span className="text-xs text-ink2">
                 {source ? (edit?.source_snapshot ?? SOURCE_TAG[source]) : (edit?.source_snapshot ?? '')}
@@ -452,12 +496,15 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
             <WhenEditor value={when} onChange={(w) => setWhen(w)} onDone={() => setEditingWhen(false)} />
           )}
 
-          <div className="flex flex-col items-center gap-0.5 pb-0.5 pt-1.5">
+          <div className={cx('flex flex-col items-center gap-0.5 pb-0.5', compact ? 'pt-1' : 'pt-1.5')}>
             <label htmlFor="amount-field" className="sr-only">
               Amount in {unit.kind === 'g' ? 'grams' : unit.kind === 'ml' ? 'millilitres' : unit.label}
             </label>
             <div
-              className="flex h-[104px] min-w-[220px] max-w-full items-center justify-center rounded-[52px] bg-raised px-7"
+              className={cx(
+                'flex min-w-[220px] max-w-full items-center justify-center bg-raised px-7',
+                compact ? 'h-[76px] rounded-[38px]' : 'h-[104px] rounded-[52px]',
+              )}
               style={{ boxShadow: '0 0 0 2.5px var(--cc-focus), 0 0 0 8px var(--cc-focus-glow)' }}
               onClick={() => inputRef.current?.focus()}
             >
@@ -496,7 +543,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
                 <span className="pl-2.5 text-[30px] text-ink2">g</span>
               )}
             </div>
-            <span className="pt-2 text-sm text-ink2 tnum">
+            <span className={cx('text-sm text-ink2 tnum', compact ? 'pt-1' : 'pt-2')}>
               {energyNow == null ? (per100 && per100.energy_kj == null ? 'Energy unknown' : ' ') : energyText(energyNow, unitPref)}
               {unit.kind !== 'g' && gramsNow != null && ` · ${int(gramsNow)} g`}
               {unit.kind !== 'g' && unit.estimate && (unit.countable ? ', typical size' : ', assumed 1 g per ml')}
@@ -504,14 +551,14 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
           </div>
 
           {picking && (
-            <div role="group" aria-label="Units" className="flex flex-wrap justify-center gap-2">
+            <ChipRow label="Units">
               {units.map((u) => (
                 <Chip key={`${u.kind}:${u.label}`} selected={sameUnit(u, unit)} onClick={() => pickUnit(u)}>
                   {u.label}
                   {u.hint && <span className="font-normal opacity-70"> · {u.hint}</span>}
                 </Chip>
               ))}
-            </div>
+            </ChipRow>
           )}
 
           {!picking && counter && (
@@ -528,13 +575,13 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
           )}
 
           {!picking && chips.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-2">
+            <ChipRow label="Quick amounts">
               {chips.map((c) => (
                 <Chip key={c.key} selected={activeChip === c.key} onClick={() => choose(c)}>
                   {measureChipLabel(c, activeChip === c.key ? (chipCounts[c.key] ?? 1) : 1)}
                 </Chip>
               ))}
-            </div>
+            </ChipRow>
           )}
 
           {(corrected || (food && food.quality_flags.length > 0 && food.source !== 'label')) && (
@@ -552,7 +599,23 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
             </div>
           )}
 
-          <div aria-label={`Nutrition for ${typed || 0} ${unit.label}`} className="grid grid-cols-3 gap-1.5">
+          <div aria-label={`Nutrition for ${typed || 0} ${unit.label}`} className="-my-0.5 flex flex-col items-center">
+            <div className="flex flex-wrap justify-center gap-x-3.5 gap-y-1 text-[13px] tnum">
+              {summary.map((n) => (
+                <span key={n.key} className={cx('flex items-center gap-1.5', n.over ? 'text-warn-text' : 'text-ink2')}>
+                  {n.colour && <MacroDot colour={n.colour} size={7} />}
+                  {n.label} <span className={cx('font-semibold', n.over ? 'text-warn-text' : 'text-ink')}>{n.text}</span>
+                  {n.over && <span aria-label="over your limit">▲</span>}
+                </span>
+              ))}
+            </div>
+            <button type="button" onClick={() => setAllNutrients((v) => !v)} className="min-h-9 border-0 bg-transparent px-2 text-[13px] font-semibold text-accent">
+              {allNutrients ? 'Fewer nutrients' : 'All nutrients'}
+            </button>
+          </div>
+
+          {allNutrients && (
+          <div aria-label="All nutrients" className="grid grid-cols-3 gap-1.5">
             {TILE_ORDER.map((info) => {
               const v = preview ? preview[info.key] : null;
               const row = info.key === 'energy_kj' ? null : day?.targetRows.find((r) => r.info.key === info.key);
@@ -583,6 +646,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
               );
             })}
           </div>
+          )}
 
           {food && canCorrect(food) && request.kind !== 'pick' && (
             <div className="-my-1 flex justify-center">
@@ -603,16 +667,19 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
 
           <Notice tone="warn">{error ?? loadError}</Notice>
 
-          <Button type="submit" disabled={saving}>
-            {request.kind === 'pick' ? (request.saveLabel ?? 'Done') : saving ? 'Saving…' : 'Save'}
-          </Button>
-          {edit && (
-            <div className="-mt-1 flex justify-center">
-              <Button variant="warnLink" onClick={onDelete} disabled={saving}>
-                Delete this entry
-              </Button>
-            </div>
-          )}
+          {/* Save stays in view at the bottom of the sheet, above the keyboard when it's up. */}
+          <div className="sticky bottom-0 z-10 -mx-4 flex flex-col bg-surface px-4 pb-1 pt-2">
+            <Button type="submit" disabled={saving}>
+              {request.kind === 'pick' ? (request.saveLabel ?? 'Done') : saving ? 'Saving…' : 'Save'}
+            </Button>
+            {edit && (
+              <div className="flex justify-center">
+                <Button variant="warnLink" onClick={onDelete} disabled={saving}>
+                  Delete this entry
+                </Button>
+              </div>
+            )}
+          </div>
         </form>
       )}
     </Sheet>
