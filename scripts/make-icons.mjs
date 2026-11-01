@@ -4,7 +4,8 @@
 // replacing the source.
 //
 // - Web: rounded icons with see-through corners (192, 512), a maskable one for Android home-screen
-//   installs, the browser tab icon (app/icon.png) and the iOS one (app/apple-icon.png).
+//   installs, the browser tab icon (app/icon.png), the iOS one (app/apple-icon.png), and the full-size
+//   picture for Today's menu (public/icon-art.webp).
 // - Android: the launcher foreground, full-bleed on the orange, the art filling exactly what
 //   launchers show, so their mask trims the jeans, never the mohawk or thumbs. The launch splash
 //   shows it too. Plus a themed (monochrome) layer traced from the art's black outlines, for
@@ -108,6 +109,8 @@ async function main() {
   await out(art, 'public/icon-512.png', 512);
   await out(art, 'public/icon-192.png', 192);
   await out(art, 'app/icon.png', 64);
+  // Full size for the big picture at the top of Today's menu (WebP keeps the see-through corners small).
+  await sharp(art).webp({ quality: 88, alphaQuality: 100 }).toFile('public/icon-art.webp');
   // Maskable: what matters (mohawk, thumbs) must sit inside the middle 80% circle. The thumbs are
   // 47% of the art's width from its centre, so the art goes in at 84%, on the bottom edge.
   await out(await fullBleed(art, SIZE, 0.84, 'bottom'), 'public/icon-maskable-512.png', 512);

@@ -368,16 +368,13 @@ export function ActionSheet({ open, onClose, title, actions, art }: {
   onClose: () => void;
   title: string;
   actions: { label: string; onClick: () => void; tone?: 'warn'; hint?: string; disabled?: boolean }[];
-  /** A picture at the top right (the app icon on Today's menu), with the title beside it. */
+  /** A picture centred at the top in place of the title (the app icon on Today's menu). */
   art?: ReactNode;
 }) {
   return (
     <Sheet open={open} onClose={onClose} label={title}>
       {art ? (
-        <div className="flex items-end justify-between gap-3 px-4 pb-1 pt-1">
-          <p className="pb-1 text-[22px] font-semibold text-ink">{title}</p>
-          {art}
-        </div>
+        <div className="flex justify-center pb-2 pt-1">{art}</div>
       ) : (
         <p className="px-2 pb-2 pt-1 text-center text-[15px] font-semibold text-ink2">{title}</p>
       )}
