@@ -7,7 +7,8 @@
 //   installs, the browser tab icon (app/icon.png) and the iOS one (app/apple-icon.png).
 // - Android: the launcher foreground, full-bleed on the orange, the art filling exactly what
 //   launchers show, so their mask trims the jeans, never the mohawk or thumbs. The launch splash
-//   shows it too.
+//   shows it too. Plus a themed (monochrome) layer traced from the art's black outlines, for
+//   phones with themed icons on.
 
 import { mkdir, rm } from 'node:fs/promises';
 import sharp from 'sharp';
@@ -85,6 +86,20 @@ async function fullBleed(art, size, scale, anchor = 'centre') {
   return (await backdrop(size, inner / size, left, top)).composite([{ input: piece, left, top }]).png().toBuffer();
 }
 
+/**
+ * Android's themed icon: the art's black outlines, sunglasses and jeans as a one-colour glyph (the
+ * launcher tints it). Without it, Android makes its own washed-out grey copy of the full art.
+ */
+async function monochrome(foreground) {
+  const { data, info } = await sharp(foreground).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const out = Buffer.alloc(info.width * info.height * 4);
+  for (let p = 0; p < info.width * info.height; p++) {
+    const lum = 0.299 * data[p * 3] + 0.587 * data[p * 3 + 1] + 0.114 * data[p * 3 + 2];
+    out.set([255, 255, 255, Math.round(Math.max(0, Math.min(1, (95 - lum) / 45)) * 255)], p * 4);
+  }
+  return sharp(out, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+}
+
 async function main() {
   const art = await rounded();
   const out = (buf, file, size) => sharp(buf).resize(size, size).png({ compressionLevel: 9 }).toFile(file);
@@ -103,7 +118,9 @@ async function main() {
   // through their mask. The art fills those 72 dp (two thirds), so a round mask keeps the mohawk
   // and thumbs and trims only the jeans. 432 px is 108 dp at xxxhdpi.
   await mkdir('android/app/src/main/res/drawable-nodpi', { recursive: true });
-  await out(await fullBleed(art, SIZE, 2 / 3), 'android/app/src/main/res/drawable-nodpi/ic_launcher_foreground.png', 432);
+  const foreground = await fullBleed(art, SIZE, 2 / 3);
+  await out(foreground, 'android/app/src/main/res/drawable-nodpi/ic_launcher_foreground.png', 432);
+  await out(await monochrome(await sharp(foreground).resize(432, 432).png().toBuffer()), 'android/app/src/main/res/drawable-nodpi/ic_launcher_monochrome.png', 432);
 
   await rm('public/icon.svg', { force: true });
   await rm('app/icon.svg', { force: true });
