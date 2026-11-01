@@ -488,3 +488,13 @@ describe("label corrections (21 Oct)", () => {
     expect(f.quality_flags).toEqual([]);
   });
 });
+
+describe("estimated activity setting (1 Nov)", () => {
+  it("is on by default and each person can turn theirs off", async () => {
+    const before = await as(DANIEL, () => one<{ estimate_activity: boolean }>(`select estimate_activity from public.profiles where user_id = '${DANIEL}'`));
+    expect(before.estimate_activity).toBe(true);
+    await as(DANIEL, () => db.exec(`update public.profiles set estimate_activity = false where user_id = '${DANIEL}'`));
+    const after = await as(DANIEL, () => one<{ estimate_activity: boolean }>(`select estimate_activity from public.profiles where user_id = '${DANIEL}'`));
+    expect(after.estimate_activity).toBe(false);
+  });
+});

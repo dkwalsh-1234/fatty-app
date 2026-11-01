@@ -48,6 +48,7 @@ export function Onboarding({ profile }: { profile: Profile }) {
       time_zone: tz,
       burn_source: null,
       stable_mode: false,
+      estimate_activity: true,
       energy_target_override_kcal: null,
     };
     const weighIns = [{ id: "draft", measured_at: new Date().toISOString(), weight_kg: currentKg, source: "manual" }];

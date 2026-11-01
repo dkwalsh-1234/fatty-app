@@ -6,7 +6,7 @@
     <color name="ink">#0B2D22</color>
     <color name="on_bar">#ECF7EE</color>
     <color name="splash">#0D2F23</color>
-    <color name="icon_bg">#0D2F23</color>
+    <color name="icon_bg">#FD8814</color>
     <!-- Widget card: pine band in light, pine surface in dark (also set in code for Glance). -->
     <color name="widget_surface">#0D2F23</color>
 </resources>

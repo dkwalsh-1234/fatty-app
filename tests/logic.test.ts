@@ -135,7 +135,7 @@ describe("Daniel's numbers from testing on 20 Oct (one target everywhere)", () =
   const profile: Profile = {
     user_id: 'u', display_name: 'Daniel', is_admin: true, birth_date: '1980-01-01', sex: 'male', height_cm: 178, activity_level: 'some',
     energy_target_override_kcal: null, warn_rate_pct_per_week: 1, warn_floor_kcal: null, time_zone: 'Australia/Sydney', energy_unit: 'kcal',
-    meal_boundaries: null, widget_nutrients: ['protein', 'sat_fat', 'sodium'], stable_mode: false, burn_source: null, onboarded_at: '2026-10-19',
+    meal_boundaries: null, widget_nutrients: ['protein', 'sat_fat', 'sodium'], stable_mode: false, estimate_activity: true, burn_source: null, onboarded_at: '2026-10-19',
   };
   const goal: Goal = { id: 'g', start_weight_kg: 85, start_date: '2026-10-20', target_weight_kg: 81, target_date: '2027-01-12', active: true, warnings_dismissed: [], created_at: '' };
   const weighIns = [{ id: 'w', measured_at: '2026-10-19T21:00:00Z', weight_kg: 85, source: 'manual' }];
@@ -174,6 +174,18 @@ describe("Daniel's numbers from testing on 20 Oct (one target everywhere)", () =
     expect(t.activityKind).toBe('estimated');
     expect(Math.round(t.activity)).toBe(652);
     expect(t.rounded).toBe(2020);
+  });
+
+  it('counts only logged burn when estimated activity is off (1 Nov)', () => {
+    const off = { ...profile, estimate_activity: false };
+    const none = targetFor({ date: '2026-10-20', profile: off, weighIns, burn: [], goal: draft })!;
+    expect([none.activity, none.activityKind, none.estimatesOff, none.rounded]).toEqual([0, 'measured', true, 1370]);
+    expect(captionParts(none, 'kcal').text).toBe('1,738 resting − 367 goal + 0 active so far');
+    // Once the watch sends burn, that's what counts, exactly as with estimates on.
+    const logged = targetFor({ date: '2026-10-20', profile: off, weighIns, burn, goal: draft })!;
+    expect([logged.activity, logged.rounded]).toEqual([285, 1660]);
+    // Stable mode still uses the 7-day average of logged burn; with none, nothing is added.
+    expect(targetFor({ date: '2026-10-20', profile: { ...off, stable_mode: true }, weighIns, burn: [], goal: draft })!.activity).toBe(0);
   });
 
   it('writes the caption as the sum, which adds up to the target before rounding', () => {
@@ -661,7 +673,7 @@ describe('Today and the widget', () => {
   const profile: Profile = {
     user_id: 'u', display_name: 'Daniel', is_admin: true, birth_date: '1986-05-01', sex: 'male', height_cm: 180, activity_level: 'some',
     energy_target_override_kcal: null, warn_rate_pct_per_week: 1, warn_floor_kcal: null, time_zone: 'Australia/Sydney', energy_unit: 'kcal',
-    meal_boundaries: null, widget_nutrients: ['protein', 'sat_fat', 'sodium'], stable_mode: false, burn_source: null, onboarded_at: '2026-10-01',
+    meal_boundaries: null, widget_nutrients: ['protein', 'sat_fat', 'sodium'], stable_mode: false, estimate_activity: true, burn_source: null, onboarded_at: '2026-10-01',
   };
   const entry = (name: string, grams: number, per: Partial<Per100>, meal: LogEntry['meal'] = 'lunch'): LogEntry => ({
     id: name, owner_id: 'u', eaten_at: '2026-10-19T02:00:00Z', meal, food_id: null, food_name_snapshot: name, source_snapshot: null, grams, entered_amount: grams,
