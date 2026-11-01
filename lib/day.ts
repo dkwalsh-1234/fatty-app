@@ -38,7 +38,7 @@ export function weightOn(weighIns: WeighIn[], date: string, tz: string): number 
  */
 export function targetFor(opts: {
   date: string;
-  profile: Pick<Profile, 'birth_date' | 'sex' | 'height_cm' | 'activity_level' | 'time_zone' | 'burn_source' | 'stable_mode' | 'energy_target_override_kcal'>;
+  profile: Pick<Profile, 'birth_date' | 'sex' | 'height_cm' | 'activity_level' | 'time_zone' | 'burn_source' | 'stable_mode' | 'estimate_activity' | 'energy_target_override_kcal'>;
   weighIns: WeighIn[];
   burn: BurnRow[];
   goal: { targetKg: number; targetDate: string } | null;
@@ -66,6 +66,7 @@ export function targetFor(opts: {
     burnToday: pickBurn(burn, date, profile.burn_source),
     burnLast7: last7,
     stableMode: profile.stable_mode,
+    estimateActivity: profile.estimate_activity ?? true,
     overrideKcal: opts.overrideKcal !== undefined ? opts.overrideKcal : profile.energy_target_override_kcal,
   });
 }

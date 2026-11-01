@@ -24,6 +24,7 @@ export const devProfile: Profile = {
   meal_boundaries: null,
   widget_nutrients: ['protein', 'sat_fat', 'sodium'],
   stable_mode: false,
+  estimate_activity: true,
   burn_source: null,
   onboarded_at: '2026-08-31T00:00:00Z',
 };

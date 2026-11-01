@@ -25,7 +25,9 @@ export function TargetBreakdownCard({ t, unit, activityLevel, kgToGo }: {
   const level = activityLevel ?? 'sitting';
   const activitySub =
     t.activityKind === 'measured'
-      ? 'Measured today through Health Connect, so far'
+      ? t.estimatesOff && t.activity === 0
+        ? 'No burn logged yet today. Estimates are off in Settings'
+        : 'Measured today through Health Connect, so far'
       : t.activityKind === 'stable'
         ? 'Stable mode: your 7-day average burn'
         : `Estimated: ${ACTIVITY_LABELS[level].toLowerCase()} (resting × ${ACTIVITY_FACTORS[level]}), until Health Connect has burn for today`;

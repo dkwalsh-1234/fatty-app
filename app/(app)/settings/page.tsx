@@ -86,6 +86,17 @@ export default function SettingsPage() {
           </span>
           <Switch label="Stable mode" checked={p.stable_mode} onChange={(v) => patch({ stable_mode: v })} />
         </div>
+        <div className="flex items-center justify-between gap-3 border-t border-separator pt-3">
+          <span>
+            <span className="block text-base">Count estimated activity</span>
+            <span className="block text-[13px] leading-snug text-ink2">
+              {p.estimate_activity
+                ? 'Until your watch sends today’s burn, add an estimate from your activity level. Turn off to count only the burn your watch logs.'
+                : 'Only the burn your watch logs counts, so activity is 0 until it sends some.'}
+            </span>
+          </span>
+          <Switch label="Count estimated activity" checked={p.estimate_activity ?? true} onChange={(v) => patch({ estimate_activity: v })} />
+        </div>
       </Card>
 
       <CapsLabel>Warnings</CapsLabel>

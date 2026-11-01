@@ -55,6 +55,11 @@ export interface TargetInput {
   burnLast7?: BurnDay[];
   stableMode?: boolean;
   overrideKcal?: number | null;
+  /**
+   * Add an estimate (resting × activity factor) until Health Connect has burn for today. Off: only
+   * logged burn counts, so activity is 0 until your watch sends some. Default on.
+   */
+  estimateActivity?: boolean;
 }
 
 /** The one energy target. Every screen shows these numbers; nothing else does the maths. */
@@ -74,6 +79,8 @@ export interface TargetBreakdown {
   daysLeft: number | null;
   /** resting + activity, before the goal adjustment. */
   maintenance: number;
+  /** Estimates are off in Settings: activity is only what Health Connect has logged. */
+  estimatesOff?: boolean;
 }
 
 /**
@@ -97,11 +104,12 @@ export function computeTarget(input: TargetInput): TargetBreakdown {
   const age = ageOn(input.birthDate, input.today);
   const resting = restingKcal({ weightKg: input.currentKg, heightCm: input.heightCm, age, sex: input.sex });
   const { adjustment, daysLeft } = dailyAdjustment(input.currentKg, input.goal, input.today);
-  const estimate = resting * ACTIVITY_FACTORS[input.activityLevel];
+  const estimatesOff = input.estimateActivity === false;
+  const estimate = estimatesOff ? 0 : resting * ACTIVITY_FACTORS[input.activityLevel];
 
   if (input.overrideKcal != null && input.overrideKcal > 0) {
     const r = roundTarget(input.overrideKcal);
-    return { resting, activity: 0, activityKind: 'estimated', adjustment: 0, target: input.overrideKcal, rounded: r, own: true, base: r, daysLeft, maintenance: resting + estimate };
+    return { resting, activity: 0, activityKind: 'estimated', adjustment: 0, target: input.overrideKcal, rounded: r, own: true, base: r, daysLeft, maintenance: resting + estimate, estimatesOff };
   }
 
   let activity: number;
@@ -117,6 +125,10 @@ export function computeTarget(input: TargetInput): TargetBreakdown {
     activityKind = 'stable';
   } else if (measuredToday != null) {
     activity = measuredToday;
+    activityKind = 'measured';
+  } else if (estimatesOff) {
+    // Only logged burn counts, and none has come in yet today.
+    activity = 0;
     activityKind = 'measured';
   } else {
     activity = estimate;
@@ -136,6 +148,7 @@ export function computeTarget(input: TargetInput): TargetBreakdown {
     base: Math.max(0, rounded - activity),
     daysLeft,
     maintenance: resting + activity,
+    estimatesOff,
   };
 }
 

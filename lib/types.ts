@@ -23,6 +23,8 @@ export interface Profile {
   meal_boundaries: MealBoundary[] | null;
   widget_nutrients: string[];
   stable_mode: boolean;
+  /** Add estimated activity until Health Connect has today's burn (Settings > Energy). */
+  estimate_activity: boolean;
   burn_source: string | null;
   onboarded_at: string | null;
 }
