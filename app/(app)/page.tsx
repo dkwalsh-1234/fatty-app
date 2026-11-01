@@ -162,8 +162,15 @@ function Today() {
         onClose={() => setMenu(false)}
         title="Fatty"
         art={
+          // As big as the screen allows: the menu takes almost the full height, with every option and
+          // Cancel still in view below the picture.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/icon-512.png" alt="" width={88} height={88} className="h-[88px] w-[88px] shrink-0 drop-shadow-[0_6px_14px_rgba(0,0,0,0.28)]" />
+          <img
+            src="/icon-art.webp"
+            alt="Fatty"
+            className="aspect-square shrink-0 drop-shadow-[0_8px_20px_rgba(0,0,0,0.3)]"
+            style={{ width: `min(360px, 100%, calc(100dvh - ${app.isAdmin ? 470 : 418}px))` }}
+          />
         }
         actions={[
           { label: 'Meals', onClick: () => router.push('/meals') },
