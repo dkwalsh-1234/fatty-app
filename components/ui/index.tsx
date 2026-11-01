@@ -363,15 +363,24 @@ export function Sheet({ open, onClose, children, label, className }: {
 }
 
 /** A small list of actions in a sheet (the ⋯ menus). */
-export function ActionSheet({ open, onClose, title, actions }: {
+export function ActionSheet({ open, onClose, title, actions, art }: {
   open: boolean;
   onClose: () => void;
   title: string;
   actions: { label: string; onClick: () => void; tone?: 'warn'; hint?: string; disabled?: boolean }[];
+  /** A picture at the top right (the app icon on Today's menu), with the title beside it. */
+  art?: ReactNode;
 }) {
   return (
     <Sheet open={open} onClose={onClose} label={title}>
-      <p className="px-2 pb-2 pt-1 text-center text-[15px] font-semibold text-ink2">{title}</p>
+      {art ? (
+        <div className="flex items-end justify-between gap-3 px-4 pb-1 pt-1">
+          <p className="pb-1 text-[22px] font-semibold text-ink">{title}</p>
+          {art}
+        </div>
+      ) : (
+        <p className="px-2 pb-2 pt-1 text-center text-[15px] font-semibold text-ink2">{title}</p>
+      )}
       <div className="flex flex-col pb-2">
         {actions.map((a) => (
           <button

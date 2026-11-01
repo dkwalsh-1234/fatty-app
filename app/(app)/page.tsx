@@ -161,6 +161,10 @@ function Today() {
         open={menu}
         onClose={() => setMenu(false)}
         title="Fatty"
+        art={
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/icon-512.png" alt="" width={88} height={88} className="h-[88px] w-[88px] shrink-0 drop-shadow-[0_6px_14px_rgba(0,0,0,0.28)]" />
+        }
         actions={[
           { label: 'Meals', onClick: () => router.push('/meals') },
           { label: 'Goal and weight', onClick: () => router.push('/goal') },
