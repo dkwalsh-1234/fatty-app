@@ -1,9 +1,10 @@
-// Draft meals for the meal confirm screen, from a meal photo or typed text. Each item is matched
-// to foods by the same search as the Search screen, keeping the top three candidates. Nutrients
-// always come from the matched food rows, never from the AI.
+// Draft meals for the meal confirm screen, from a meal photo or typed text. With an AI key the AI
+// picks each item's food from what search finds (lib/ai/match.ts); without one, a plain list with
+// amounts is matched by search alone (tryLocalText). Nutrients always come from the food rows,
+// never from the AI.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { MealPhotoResult, TextParseResult } from './ai/schemas';
+import type { TextParseResult } from './ai/schemas';
 import { parseText, type TextItem } from './parse';
 
 export interface Candidate {
@@ -46,6 +47,10 @@ export interface DraftItem {
   tier?: number | null;
   /** Set when the AI split a mixed drink or dish into parts: what it was split from. */
   splitFrom?: string | null;
+  /** How the amount reads when it isn't grams: "2 × egg", "250 ml". */
+  entered?: { amount: number; unit: 'ml' | 'measure'; measure: string | null } | null;
+  /** The AI found no listed food that is this: the candidates are only for Swap. */
+  noMatch?: boolean;
 }
 
 export interface Draft {
@@ -57,12 +62,12 @@ export interface Draft {
   items: DraftItem[];
 }
 
-const CANDIDATE_COLS =
+export const CANDIDATE_COLS =
   'id, name, display_name, brand, source, is_liquid, density_g_per_ml, serving_g, energy_kj, protein_g, fat_g, sat_fat_g, trans_fat_g, carbs_g, sugars_g, fibre_g, sodium_mg';
 
 const toNum = (v: unknown) => (v == null ? null : Number(v));
 
-function toCandidate(f: Record<string, unknown>, lastGrams: unknown): Candidate {
+export function toCandidate(f: Record<string, unknown>, lastGrams: unknown): Candidate {
   return {
     ...(f as unknown as Candidate),
     density_g_per_ml: toNum(f.density_g_per_ml),
@@ -124,40 +129,9 @@ export async function gramsForCount(sb: SupabaseClient, foodId: string, count: n
   return null;
 }
 
-/** A hidden-fat suggestion gets a sensible amount from household measures (1 tsp) where there is one. */
-async function suggestedGrams(sb: SupabaseClient, foodId: string, aiGrams: number): Promise<{ grams: number; note: string | null }> {
-  const { data } = await sb.from('food_measures').select('label, grams').eq('food_id', foodId).limit(30);
-  const tsp = (data ?? []).find((m) => /\b1\s*(tsp|teaspoon)/i.test(m.label as string));
-  if (tsp) return { grams: Number(tsp.grams), note: '1 tsp' };
-  return { grams: aiGrams, note: null };
-}
-
 let seq = 0;
 export const newKey = () => `i${Date.now().toString(36)}${(seq++).toString(36)}`;
 const key = newKey;
-
-export async function draftFromPhoto(sb: SupabaseClient, ai: MealPhotoResult): Promise<DraftItem[]> {
-  return Promise.all(
-    ai.items.map(async (it) => {
-      const { candidates, tier } = await matchFoods(sb, it.name);
-      let grams = Math.max(1, Math.round(it.grams));
-      let note: string | null = null;
-      if (it.suggested && candidates[0]) ({ grams, note } = await suggestedGrams(sb, candidates[0].id, grams));
-      return {
-        key: key(),
-        label: it.display_name || it.name,
-        query: it.name,
-        grams,
-        estimate: true,
-        confidence: it.confidence,
-        suggested: it.suggested,
-        note,
-        candidates,
-        tier,
-      };
-    }),
-  );
-}
 
 /** Items from typed text, whether parsed locally or by AI. Counts convert with household measures. */
 export async function draftFromText(sb: SupabaseClient, items: (TextItem | (TextParseResult['items'][number] & { raw?: string }))[]): Promise<DraftItem[]> {

@@ -24,6 +24,7 @@ const PATHS = {
   trash: { d: 'M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3' },
   image: { d: 'M4 17l5-5 4 4 3-3 4 4', rect: [3, 4, 18, 16, 3] },
   info: { d: 'M12 11v5M12 8h.01', circle: [12, 12, 9] },
+  sparkle: { d: 'M11 3l1.8 5.2L18 10l-5.2 1.8L11 17l-1.8-5.2L4 10l5.2-1.8zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z' },
 } as const;
 
 export type IconName = keyof typeof PATHS;

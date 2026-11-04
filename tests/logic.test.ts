@@ -11,7 +11,9 @@ import { breakdown, buildDay, pickBurn, targetFor } from '@/lib/day';
 import { amountText, nutrientText, saltText } from '@/lib/format';
 import { emptyPer100, scale, sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { parseSearch, parseText } from '@/lib/parse';
-import { cleanEstimate, cleanResolve, componentsForGrams, isWeakMatch } from '@/lib/resolution';
+import type { Candidate } from '@/lib/drafts';
+import { applyPick, describeItems, fromPhoto, fromText, pickMeasures, searchesFor, type PoolFood } from '@/lib/matching';
+import { cleanEstimate } from '@/lib/resolution';
 import { mapOffProduct } from '@/lib/sources/off';
 import { mapOffAuRow } from '@/lib/sources/off-au';
 import { afcdDuplicates } from '@/lib/sources/fsanz-dedupe';
@@ -715,31 +717,71 @@ describe('Today and the widget', () => {
   });
 });
 
-describe('AI fallbacks (item 4 and Q5)', () => {
-  it('asks the AI only when search found nothing or matched on spelling alone', () => {
-    expect(isWeakMatch(0, null)).toBe(true);
-    expect(isWeakMatch(3, 3)).toBe(true);
-    expect(isWeakMatch(3, 2)).toBe(false);
-    expect(isWeakMatch(1, 1)).toBe(false);
+describe('AI-first matching', () => {
+  const cand = (id: string, name: string, extra: Partial<Candidate> = {}): Candidate => ({
+    id, name, display_name: null, brand: null, source: 'ausnut', is_liquid: false, density_g_per_ml: null, serving_g: null,
+    energy_kj: 600, protein_g: null, fat_g: null, sat_fat_g: null, trans_fat_g: null, carbs_g: null, sugars_g: null, fibre_g: null, sodium_mg: null,
+    last_grams: null, ...extra,
+  });
+  const measure = (label: string, grams: number) => ({ id: label, food_id: 'x', label, grams, source: 'ausnut' as const, owner_id: null, rank: 1 });
+  const unitFood = { name: 'Egg, chicken, whole, poached', display_name: null, source: 'ausnut' as const, is_liquid: false, density_g_per_ml: null, serving_g: null, pack_g: null, total_weight_g: null, serves: null };
+  const eggs = fromText({
+    text: 'poached eggs', display_name: 'Poached eggs', description: 'chicken eggs, poached', searches: ['egg chicken poached'], part_of: null,
+    amount: null, unit: null, count: 2, count_noun: 'egg', typical_grams: null,
+  });
+  const benedict: PoolFood = {
+    candidate: cand('b', 'Eggs benedict, poached chicken egg, bacon or ham & hollandaise sauce', { serving_g: 249 }),
+    measures: pickMeasures({ ...unitFood, name: 'Eggs benedict', serving_g: 249 }, []),
+    logged: 0,
+  };
+  const egg: PoolFood = { candidate: cand('e', 'Egg, chicken, whole, poached, no added fat'), measures: pickMeasures(unitFood, [measure('1 egg', 49)]), logged: 0 };
+
+  it('searches with the AI terms first, then its own words, without repeats', () => {
+    expect(searchesFor(eggs)).toEqual(['egg chicken poached', 'poached eggs']);
   });
 
-  it('keeps three distinct phrasings and sensible components', () => {
-    const r = cleanResolve({
-      phrasings: [' coffee, flat white ', 'Coffee, flat white', 'coffee, latte', 'a', 'b'],
-      components: [{ name: 'coffee, espresso', grams: 30 }, { name: '', grams: 10 }, { name: 'oat beverage', grams: -5 }],
-    });
-    expect(r.phrasings).toEqual(['coffee, flat white', 'coffee, latte', 'a']);
-    expect(r.components).toEqual([{ name: 'coffee, espresso', grams: 30 }]);
+  it('shows the AI each food with its measures and history', () => {
+    const text = describeItems([eggs], [[benedict, { ...egg, logged: 3 }]]);
+    expect(text).toContain('Item 1: Poached eggs (chicken eggs, poached). Amount: 2 × egg.');
+    expect(text).toContain('  B. Egg, chicken, whole, poached, no added fat · FSANZ · 600 kJ per 100 g · logged before 3× · measures: egg = 49 g');
+    expect(text).toContain('measures: serve = 249 g');
   });
 
-  it('scales cached components to the amount logged', () => {
-    const parts = [{ name: 'coffee, espresso', grams: 30 }, { name: 'oat beverage', grams: 210 }];
-    // "8 oz flat white with oat milk": 227 g.
-    const scaled = componentsForGrams(parts, 227);
-    expect(scaled).toEqual([{ name: 'coffee, espresso', grams: 28 }, { name: 'oat beverage', grams: 199 }]);
-    expect(componentsForGrams(parts, null)).toEqual(parts);
+  it('turns the pick into the chosen food and a count of its measure', () => {
+    const row = applyPick(eggs, [benedict, egg], { item: 1, food: 'B', alternatives: ['A'], measure: 'egg', count: 2, grams: null, confidence: 'high' }, 'k');
+    expect(row.candidates.map((c) => c.id)).toEqual(['e', 'b']);
+    expect(row).toMatchObject({ grams: 98, estimate: false, entered: { amount: 2, unit: 'measure', measure: 'egg' }, noMatch: false, confidence: 'high' });
+    // The AI sometimes copies the weight too.
+    expect(applyPick(eggs, [benedict, egg], { item: 1, food: 'B', alternatives: [], measure: 'egg = 49 g', count: 2, grams: null, confidence: 'high' }, 'k').grams).toBe(98);
   });
 
+  it('treats no pick, or a letter not on the list, as no match', () => {
+    expect(applyPick(eggs, [benedict], { item: 1, food: null, alternatives: [], measure: null, count: null, grams: null, confidence: 'low' }, 'k')).toMatchObject({ noMatch: true, grams: null });
+    expect(applyPick(eggs, [benedict], { item: 1, food: 'Q', alternatives: [], measure: null, count: null, grams: null, confidence: 'high' }, 'k').noMatch).toBe(true);
+    expect(applyPick(eggs, [benedict], undefined, 'k').noMatch).toBe(true);
+  });
+
+  it('keeps grams the person typed or a photo showed, whatever the AI says', () => {
+    const typed = fromText({ text: 'salad', display_name: 'Salad', description: 'green salad', searches: ['salad green'], part_of: null, amount: 45, unit: 'g', count: null, count_noun: null, typical_grams: null });
+    expect(applyPick(typed, [egg], { item: 1, food: 'A', alternatives: [], measure: 'egg', count: 3, grams: 400, confidence: 'high' }, 'k')).toMatchObject({ grams: 45, estimate: false, entered: null });
+    const seen = fromPhoto({ name: 'rice, white, cooked', display_name: 'White rice', description: 'white rice, boiled', searches: ['rice white boiled'], part_of: null, grams: 182.4, confidence: 'medium', suggested: false });
+    expect(applyPick(seen, [egg], { item: 1, food: 'A', alternatives: [], measure: null, count: null, grams: 90, confidence: 'high' }, 'k')).toMatchObject({ grams: 182, estimate: true, confidence: 'medium' });
+  });
+
+  it('converts millilitres with the chosen food’s density', () => {
+    const milk = fromText({ text: 'milk', display_name: 'Milk', description: 'cow milk, regular fat', searches: ['milk cow regular fat'], part_of: null, amount: 250, unit: 'ml', count: null, count_noun: null, typical_grams: null });
+    const m: PoolFood = { candidate: cand('m', 'Milk, cow, fluid, regular fat', { is_liquid: true, density_g_per_ml: 1.03 }), measures: [], logged: 0 };
+    expect(applyPick(milk, [m], { item: 1, food: 'A', alternatives: [], measure: null, count: null, grams: null, confidence: 'high' }, 'k')).toMatchObject({ grams: 257.5, estimate: false, entered: { amount: 250, unit: 'ml' } });
+  });
+
+  it('falls back to the AI’s grams for a count with no measure, and drops silly amounts', () => {
+    const r = applyPick(eggs, [benedict], { item: 1, food: 'A', alternatives: [], measure: 'slice', count: 2, grams: 120, confidence: 'medium' }, 'k');
+    expect(r).toMatchObject({ grams: 120, estimate: true, note: '2 × egg', entered: null });
+    expect(applyPick(eggs, [benedict], { item: 1, food: 'A', alternatives: [], measure: null, count: null, grams: 90000, confidence: 'medium' }, 'k').grams).toBeNull();
+  });
+});
+
+describe('AI estimates (Q5)', () => {
   it('drops impossible AI estimate values and needs energy', () => {
     const base = { name: 'Chai latte', is_liquid: true, confidence: 'medium' as const };
     const v = cleanEstimate({

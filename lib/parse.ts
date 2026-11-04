@@ -102,6 +102,3 @@ export function splitItems(input: string): string[] {
 export function parseText(input: string): TextItem[] {
   return splitItems(input).map((raw) => ({ raw, ...parseAmount(raw) }));
 }
-
-/** Every item has an explicit weight or volume, so no AI is needed to work out amounts. */
-export const allHaveAmounts = (items: TextItem[]) => items.length > 0 && items.every((i) => i.amount != null);

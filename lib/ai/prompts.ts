@@ -1,7 +1,8 @@
 // The prompts, shared by every provider. Nutrients come from data: the AI identifies foods,
-// estimates grams, reads numbers off a label, splits typed text, or rewords a phrase into database
-// terms. The one exception is estimatePrompt, a last resort the person asks for, whose values are
-// stored as an "AI estimate" food and flagged wherever they're totalled.
+// estimates grams, reads numbers off a label, lists the foods in a photo or typed text with
+// database searches, or picks the matching food from what those searches found. The one exception
+// is estimatePrompt, a last resort the person asks for, whose values are stored as an "AI estimate"
+// food and flagged wherever they're totalled.
 
 export const LABEL_SYSTEM = `You read Australian and New Zealand nutrition information panels from photos.
 Return only what is printed. Never estimate, guess or calculate a nutrient value from general knowledge.`;
@@ -31,40 +32,62 @@ export function mealPrompt(hint: string | null) {
 Rules:
 - Estimate the grams of the portion actually visible on the plate, not a standard serving size.
 - Name each item in plain generic terms that would match an Australian food database (for example "rice, white, cooked", "chicken breast, cooked", "broccoli, boiled"), plus a short display name ("White rice").
+- One item for a dish or drink and what it's made or served with, when a food database might list them together: "chicken stir fry with rice", "flat white with oat milk", "spaghetti bolognese", "a ham and cheese sandwich", "tea with milk". Always one item when a single amount covers the lot. Separate foods eaten together are separate items: "eggs and toast", "a coffee and a banana".
+- Split only a home-made combination a database is unlikely to list as one food into its main parts, with part_of set to the dish's name on each part; otherwise part_of is null.
+- description: exactly what it is, with how it was cooked and anything said about it ("chicken eggs, poached, no added fat").
+- searches: two to four searches for the database, most likely first. Each is two to four key words in the database's own terms and order, like "egg chicken poached", "bread sour dough toasted", "milk cow regular fat" (the database says "regular fat", not "full cream"), "coffee flat white cereal based milk" (oat and rice milks are "cereal based"), "stir fry chicken rice". Every word of a search must match, so keep them short. Where a brand or product was named, one search is that brand and product ("carmans toasted muesli").
 - Give each item a confidence: low, medium or high.
 - Also list likely hidden fats (cooking oil, butter, dressing, mayonnaise) as separate items with suggested: true and a sensible small amount. All other items have suggested: false.
 - If the person's note names a fat with an amount (for example "1 tbsp oil"), list it as a normal item at that amount with suggested: false, not as a suggestion.
 - Return no calories, kilojoules or nutrients of any kind.`;
 }
 
-export const TEXT_SYSTEM = `You split what someone typed or dictated about a meal into separate foods with amounts, for an Australian food logging app.
+export const TEXT_SYSTEM = `You work out what someone ate from what they typed or dictated, for an Australian food logging app. The app then looks each food up in its database (AUSNUT 2023, AFCD, Australian packaged products, and the person's own foods).
 You never return calories or nutrient values.`;
 
 export function textPrompt(text: string) {
-  return `Split this into foods with amounts:
+  return `What they wrote:
 
 "${text}"
 
+List each food or drink in it.
+
 Rules:
-- One item per food. "text" is the food words only, in plain terms that would match an Australian food database.
+- One item per food. "text" is the food words only. display_name is a short name as they'd say it ("Poached eggs").
+- One item for a dish or drink and what it's made or served with, when a food database might list them together: "chicken stir fry with rice", "flat white with oat milk", "spaghetti bolognese", "a ham and cheese sandwich", "tea with milk". Always one item when a single amount covers the lot. Separate foods eaten together are separate items: "eggs and toast", "a coffee and a banana".
+- Split only a home-made combination a database is unlikely to list as one food into its main parts, with part_of set to the dish's name on each part; otherwise part_of is null.
+- description: exactly what it is, with how it was cooked and anything said about it ("chicken eggs, poached, no added fat").
+- searches: two to four searches for the database, most likely first. Each is two to four key words in the database's own terms and order, like "egg chicken poached", "bread sour dough toasted", "milk cow regular fat" (the database says "regular fat", not "full cream"), "coffee flat white cereal based milk" (oat and rice milks are "cereal based"), "stir fry chicken rice". Every word of a search must match, so keep them short. Where a brand or product was named, one search is that brand and product ("carmans toasted muesli").
 - If grams or millilitres are given, return them in amount and unit (convert kg to g and litres to ml).
-- If a count is given instead ("2 eggs", "a banana", "three slices of toast"), return count and count_noun ("egg", "banana", "slice") and leave amount null. The app converts counts using household measures.
+- If a count is given instead ("2 eggs", "a banana", "one piece of toast"), return count and count_noun ("egg", "banana", "slice") and leave amount null.
 - Only when neither an amount nor a count is given, return typical_grams: a typical single serve in grams. Otherwise typical_grams is null.
 - Return no calories, kilojoules or nutrients of any kind.`;
 }
 
-export const RESOLVE_SYSTEM = `You translate how people describe food into the names Australian food composition databases use (AUSNUT 2023 and AFCD), for an Australian food logging app.
+export const PICK_SYSTEM = `You choose which food in an Australian food database matches what someone ate, and how much, for a food logging app. You choose only from the foods listed.
 You never return calories or nutrient values.`;
 
-export function resolvePrompt(phrase: string, grams: number | null) {
-  const amount = grams ? `about ${Math.round(grams)} g` : 'one typical serve';
-  return `Someone logged: "${phrase}"${grams ? ` (${amount})` : ''}.
-Searching the database for those words found nothing useful. Say how the database would most likely name it.
+/** `items` is already written out: each item, its amount, and the lettered foods the searches found. */
+export function pickPrompt(context: string, items: string) {
+  return `${context}
+
+${items}
+
+For each item, choose the listed food that is the same food, prepared the same way, and the amount.
 
 Rules:
-- phrasings: one to three short generic names, most likely first. Each is searched requiring every word, so use two to four key words in the database's own terms. For example "beef noodle soup", "coffee flat white cereal based milk", "milk cow regular fat" (the database says "regular fat", not "full cream"), "bread white toasted". Generic foods only: no brands, no amounts.
-- Dishes are often listed generically, like "Soup, broth with meat & noodles", "Curry, homemade, rice with beef" or "Stir fry, chicken & vegetables". When a dish may not be listed by its own name, give a phrasing in that generic style.
-- components: only for a mixed drink or dish that a database is unlikely to list as one food. List its main parts, each as two to four key words in database terms, with grams that add up to ${amount}. For example a flat white with oat milk: "coffee espresso" 30 g and "oat beverage" 210 g. Otherwise return an empty list.
+- A plain food is never a dish that contains it: poached eggs are "Egg, chicken, whole, poached", not eggs benedict; toast is bread, toasted, not French toast or toasted muesli. Never choose a food that adds things they didn't mention.
+- When nothing is exact, close is fine: the same food cooked a similar way, or the generic version of a product.
+- Prefer generic foods (FSANZ) unless they named a brand or product. A food marked "logged before" is a good choice when it is the same thing.
+- If no listed food is the same food or a close equivalent, food is null. Never settle for a different food.
+- alternatives: up to three other listed foods that could also be right, best first.
+- An item with grams or millilitres keeps them: measure, count and grams are null.
+- An item with a count: the chosen food's measure that fits what was counted ("a piece of toast" is a slice) and the count. If no measure fits, grams is your estimate for that many.
+- An item with no amount: one natural serve. A measure and count where one fits (1 egg, 1 slice, 1 regular cup), else grams of a typical serve.
+- A photo item keeps the grams estimated from the photo: measure, count and grams are null.
+- measure is the name of one of the chosen food's measures, copied exactly, without its weight: "egg", not "egg = 49 g".
+- When they didn't say which kind, choose the most common, plainest version: white over rye or wholemeal, regular over reduced fat, a commercial loaf over a home-made one.
+- confidence: high when it is clearly the same food, medium when close, low when unsure.
 - Return no calories, kilojoules or nutrients of any kind.`;
 }
 

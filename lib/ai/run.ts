@@ -29,7 +29,7 @@ export async function userAi(userId: string): Promise<UserAi> {
 
 export async function runAi<S extends z.ZodType>(
   ai: UserAi,
-  req: { system: string; prompt: string; images?: AiImage[]; schema: S },
+  req: { system: string; prompt: string; images?: AiImage[]; schema: S; quick?: boolean },
 ): Promise<z.infer<S>> {
   const adapter = ADAPTERS[ai.provider];
   let last: unknown;

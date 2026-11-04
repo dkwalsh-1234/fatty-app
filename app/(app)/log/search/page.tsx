@@ -3,19 +3,19 @@
 // Search: type-ahead against our own database only (never Open Food Facts' search). The box
 // accepts an amount with the food ("45 salad", "salad 45g", "250ml milk"). Before typing it shows
 // your Meals, Recent and Frequent foods with their last amounts, so a repeat is one tap plus Save.
-// When results are empty or only close spellings, and you have an AI key: "Ask AI to find this"
-// rewords it into database terms (item 4), and "Use an AI estimate" is the last resort (Q5).
+// With an AI key, Enter (or "Let AI pick") sends what you typed to the same AI matching as Type:
+// it picks the food and amount from what search finds, for you to check. "Use an AI estimate" is
+// the last resort when search finds only close spellings (Q5).
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '@/components/app/AppProvider';
-import { BackButton, Button, CapsLabel, Icon, Notice, Spinner } from '@/components/ui';
+import { BackButton, CapsLabel, Icon, Notice, Spinner } from '@/components/ui';
 import { PROVIDER_BY_ID } from '@/lib/ai/config';
-import { aiEstimate, AiCallError, askAiToFind } from '@/lib/ai-fallback';
+import { aiEstimate, AiCallError, aiPick } from '@/lib/ai-fallback';
 import { frequentFoods, myMeals, recentFoods, type ListedFood, type SearchResult } from '@/lib/data';
-import type { Candidate, Draft, DraftItem } from '@/lib/drafts';
-import type { ResolveResponse } from '@/lib/resolution';
+import type { Candidate } from '@/lib/drafts';
 import { useFoodSearch } from '@/lib/useFoodSearch';
 import { amountText, energyText, int } from '@/lib/format';
 import { parseSearch } from '@/lib/parse';
@@ -61,7 +61,7 @@ const fromCandidate = (c: Candidate): RowData => ({
   last: c.last_grams ? { grams: c.last_grams, amount: null, unit: null } : null,
 });
 
-type AiState = { q: string; busy: 'find' | 'estimate' | null; found?: ResolveResponse; error?: { message: string; settings: boolean } };
+type AiState = { q: string; busy: 'pick' | 'estimate' | null; error?: { message: string; settings: boolean; op: 'pick' | 'estimate' } };
 
 const fromResult = (r: SearchResult): RowData => ({
   id: r.id,
@@ -92,9 +92,8 @@ function Search() {
   const [aiState, setAi] = useState<AiState | null>(null);
   const ai = aiState && aiState.q === parsed.text ? aiState : null;
   const providerName = app.aiKey ? PROVIDER_BY_ID[app.aiKey.provider].name : 'AI';
-  const weak =
-    !!app.aiKey && parsed.text.length >= 3 && !searching && search.results != null && (search.results.length === 0 || search.results[0].tier === 3);
-  const grams = parsed.amount != null && parsed.count == null ? parsed.amount : null;
+  const canPick = !!app.aiKey && parsed.text.length >= 3;
+  const weak = canPick && !searching && search.results != null && (search.results.length === 0 || search.results[0].tier === 3);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -121,13 +120,15 @@ function Search() {
     });
   }
 
-  async function askAi() {
-    const q = parsed.text;
-    setAi({ q, busy: 'find' });
+  /** The AI picks the food and amount for what you typed; you check it on meal confirm. */
+  async function letAiPick() {
+    const text = q.trim();
+    if (!canPick || ai?.busy) return;
+    setAi({ q: parsed.text, busy: 'pick' });
     try {
-      setAi({ q, busy: null, found: await askAiToFind(q, grams) });
+      router.push(await aiPick(text, date));
     } catch (e) {
-      setAi({ q, busy: null, error: { message: e instanceof Error ? e.message : "That didn't work.", settings: e instanceof AiCallError && e.settings } });
+      setAi({ q: parsed.text, busy: null, error: { message: e instanceof Error ? e.message : "That didn't work.", settings: e instanceof AiCallError && e.settings, op: 'pick' } });
     }
   }
 
@@ -139,23 +140,12 @@ function Search() {
       setAi((a) => ({ ...(a ?? { q }), busy: null }));
       open(fromCandidate(c));
     } catch (e) {
-      setAi((a) => ({ ...(a ?? { q }), busy: null, error: { message: e instanceof Error ? e.message : "That didn't work.", settings: e instanceof AiCallError && e.settings } }));
+      setAi((a) => ({ ...(a ?? { q }), busy: null, error: { message: e instanceof Error ? e.message : "That didn't work.", settings: e instanceof AiCallError && e.settings, op: 'estimate' } }));
     }
-  }
-
-  /** A split goes to meal confirm as rows, like a typed meal. */
-  function checkSplit(items: DraftItem[]) {
-    const key = Date.now().toString(36);
-    const draft: Draft = { kind: 'text', text: parsed.text, items };
-    sessionStorage.setItem(`fatty:draft:text:${key}`, JSON.stringify(draft));
-    const qs = new URLSearchParams({ text: key });
-    if (date) qs.set('d', date);
-    router.push(`/log/confirm?${qs}`);
   }
 
   const unit = app.profile.energy_unit;
   const showLists = results == null;
-  const found = ai?.found?.resolution;
 
   return (
     <main className="mx-auto w-full max-w-[480px] px-4 pb-10">
@@ -173,7 +163,9 @@ function Search() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && results?.[0]) open(results[0]);
+              if (e.key !== 'Enter') return;
+              if (canPick) void letAiPick();
+              else if (results?.[0]) open(results[0]);
             }}
             placeholder="Food, or “45 salad”"
             className="h-full min-w-0 flex-1 border-0 bg-transparent text-[17px] outline-none"
@@ -192,6 +184,37 @@ function Search() {
       )}
       <Notice tone="warn" className="mt-2">
         {error}
+      </Notice>
+
+      {canPick && (
+        <button
+          type="button"
+          onClick={letAiPick}
+          disabled={!!ai?.busy}
+          className="press mt-3 flex min-h-[56px] w-full items-center gap-3 rounded-log-card border-0 bg-surface px-5 text-left shadow-[var(--cc-card-shadow)]"
+        >
+          <Icon name="sparkle" size={20} className="shrink-0 text-accent" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[16px] font-semibold text-accent">{ai?.busy === 'pick' ? `${providerName} is picking…` : 'Let AI pick'}</span>
+            <span className="block truncate text-[12px] text-ink2">{providerName} finds the right food and amount for “{q.trim()}” · or press Enter</span>
+          </span>
+          {ai?.busy === 'pick' && <Spinner label="Picking" />}
+        </button>
+      )}
+      <Notice tone="warn" className="mt-2">
+        {ai?.error?.op === 'pick' && (
+          <>
+            {ai.error.message}
+            {ai.error.settings && (
+              <>
+                {' '}
+                <Link href="/settings#ai" className="font-semibold text-accent">
+                  Settings
+                </Link>
+              </>
+            )}
+          </>
+        )}
       </Notice>
 
       {showLists ? (
@@ -217,43 +240,8 @@ function Search() {
         !searching && <p className="mx-1 mt-6 text-[15px] text-ink2">Nothing found for “{parsed.text}”.</p>
       )}
 
-      {weak && !ai?.found && (
-        <button
-          type="button"
-          onClick={askAi}
-          disabled={!!ai?.busy}
-          className="press mt-3 flex min-h-[52px] w-full items-center gap-3 rounded-log-card border-0 bg-surface px-5 text-left shadow-[var(--cc-card-shadow)]"
-        >
-          <Icon name="search" size={20} className="shrink-0 text-accent" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[16px] font-semibold text-accent">{ai?.busy === 'find' ? `Asking ${providerName}…` : 'Ask AI to find this'}</span>
-            <span className="block text-[12px] text-ink2">{providerName} rewords it the way the food database names things</span>
-          </span>
-          {ai?.busy === 'find' && <Spinner label="Asking" />}
-        </button>
-      )}
-      {found?.kind === 'match' && <List title="Found by AI" rows={found.candidates.map(fromCandidate)} unit={unit} onOpen={open} showSource />}
-      {found?.kind === 'split' && ai?.found?.items && (
-        <>
-          <CapsLabel>AI split it into</CapsLabel>
-          <section className="rounded-log-card bg-surface pb-3 pl-5 pr-4 shadow-[var(--cc-card-shadow)]">
-            {ai.found.items.map((i) => (
-              <div key={i.key} className="flex min-h-[46px] items-center gap-2.5 border-t border-separator py-2 first:border-t-0">
-                <span className="line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug">
-                  {i.candidates[0] ? (i.candidates[0].display_name ?? i.candidates[0].name) : <>{i.label} <span className="text-ink2">· not matched</span></>}
-                </span>
-                <span className="text-[13px] text-ink2 tnum">≈ {int(i.grams ?? 0)} g</span>
-              </div>
-            ))}
-            <Button size="md" onClick={() => checkSplit(ai.found!.items!)} className="mt-1 w-full">
-              Check and log these
-            </Button>
-          </section>
-        </>
-      )}
-      {found?.kind === 'none' && <p className="mx-1 mt-4 text-[15px] text-ink2">{providerName} couldn&apos;t find a match in the food database either.</p>}
       <Notice tone="warn" className="mt-2">
-        {ai?.error && (
+        {ai?.error?.op === 'estimate' && (
           <>
             {ai.error.message}
             {ai.error.settings && (

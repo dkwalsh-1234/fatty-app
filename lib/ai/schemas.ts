@@ -31,11 +31,21 @@ export const LabelSchema = z.object({
 });
 export type LabelResult = z.infer<typeof LabelSchema>;
 
+/** Shared by typed and photographed meals: what the item is, and how to find it in the database. */
+const lookup = {
+  description: z.string().describe('Exactly what it is, with how it was cooked, e.g. "chicken eggs, poached, no added fat"'),
+  searches: z
+    .array(z.string())
+    .describe('Two to four database searches, most likely first, each two to four key words in the database\'s own terms, e.g. "egg chicken poached"'),
+  part_of: z.string().nullable().describe('When a home-made dish was split into its parts: the dish\'s name; else null'),
+};
+
 export const MealPhotoSchema = z.object({
   items: z.array(
     z.object({
       name: z.string().describe('Plain generic name that would match an Australian food database, e.g. "rice, white, cooked"'),
       display_name: z.string().describe('Short display name, e.g. "White rice"'),
+      ...lookup,
       grams: z.number().describe('Estimated grams of the portion actually visible on the plate'),
       confidence: z.enum(['low', 'medium', 'high']),
       suggested: z.boolean().describe('True only for likely hidden fats (cooking oil, butter, dressing) not named in the hint'),
@@ -48,31 +58,33 @@ export const TextParseSchema = z.object({
   items: z.array(
     z.object({
       text: z.string().describe('The food words only, e.g. "salad", "eggs", "flat white"'),
-      display_name: z.string().describe('Short display name'),
+      display_name: z.string().describe('Short name as the person would say it, e.g. "Poached eggs"'),
+      ...lookup,
       amount: n.describe('Grams or millilitres if given, else null'),
       unit: z.enum(['g', 'ml']).nullable(),
       count: n.describe('A count if given instead of a weight ("2 eggs" → 2), else null'),
-      count_noun: z.string().nullable().describe('The counted noun ("egg"), else null'),
+      count_noun: z.string().nullable().describe('The counted noun ("egg", "slice"), else null'),
       typical_grams: n.describe('Only when no amount and no count is given: a typical single serve in grams; else null'),
     }),
   ),
 });
 export type TextParseResult = z.infer<typeof TextParseSchema>;
 
-export const ResolveSchema = z.object({
-  phrasings: z
-    .array(z.string())
-    .describe('One to three generic ways an Australian food database would name this food, most likely first, e.g. "coffee, flat white, plant based milk"'),
-  components: z
-    .array(
-      z.object({
-        name: z.string().describe('Generic database name of one part, e.g. "coffee, espresso"'),
-        grams: z.number().describe('Grams of this part in the whole amount'),
-      }),
-    )
-    .describe('Only for a mixed drink or dish a database is unlikely to list as one food: its main parts with grams. Otherwise empty.'),
+/** The second pass: which listed food each item is, and how much. Foods are named by their letter. */
+export const PickSchema = z.object({
+  items: z.array(
+    z.object({
+      item: z.number().describe('The item number'),
+      food: z.string().nullable().describe('Letter of the listed food that is the same food, or null if none is'),
+      alternatives: z.array(z.string()).describe('Letters of up to three other listed foods that could also be right, best first'),
+      measure: z.string().nullable().describe("One of the chosen food's measures, copied exactly, when the amount is a count of it; else null"),
+      count: n.describe('How many of that measure; else null'),
+      grams: n.describe('Grams, only when the amount is your estimate and no measure fits; else null'),
+      confidence: z.enum(['low', 'medium', 'high']),
+    }),
+  ),
 });
-export type ResolveResult = z.infer<typeof ResolveSchema>;
+export type PickResult = z.infer<typeof PickSchema>;
 
 export const EstimateSchema = z.object({
   name: z.string().describe('Short generic name for what was estimated, e.g. "Flat white, oat milk"'),
