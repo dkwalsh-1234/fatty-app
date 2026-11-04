@@ -1,55 +1,11 @@
-// Pure helpers for the AI fallbacks: turning a phrase into database terms (item 4) and, as a last
-// resort the person asks for, an AI estimate of the values (Q5). Shared by the server and tests.
+// Pure helpers for the AI estimate, the last resort the person asks for (Q5). Shared by the server
+// and tests.
 
-import type { EstimateResult, ResolveResult } from './ai/schemas';
-import type { Candidate, DraftItem } from './drafts';
+import type { EstimateResult } from './ai/schemas';
 import { NUTRIENT_KEYS, type NutrientKey } from './nutrients';
-
-/** What the AI fallback found for a phrase: database foods, a split into parts, or nothing. */
-export type Resolution =
-  | { kind: 'match'; candidates: Candidate[] }
-  | { kind: 'split'; components: { name: string; grams: number; candidates: Candidate[] }[] }
-  | { kind: 'none' };
-
-/** /api/resolve-food's answer. A split also comes as meal confirm rows. */
-export interface ResolveResponse {
-  resolution: Resolution;
-  items?: DraftItem[];
-  cached: boolean;
-}
-
-/** Search found nothing, or matched on spelling only (tier 3): worth asking the AI. */
-export const isWeakMatch = (candidates: number, tier: number | null | undefined) => candidates === 0 || tier === 3;
 
 /** "coffee, espresso" → "Coffee, espresso". */
 export const sentenceCase = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-
-/** At most three distinct phrasings and six components, with blanks and silly amounts dropped. */
-export function cleanResolve(r: ResolveResult): ResolveResult {
-  const seen = new Set<string>();
-  const phrasings: string[] = [];
-  for (const p of r.phrasings ?? []) {
-    const t = p.trim().slice(0, 120);
-    if (t && !seen.has(t.toLowerCase())) {
-      seen.add(t.toLowerCase());
-      phrasings.push(t);
-    }
-  }
-  const components = (r.components ?? [])
-    .map((c) => ({ name: c.name.trim().slice(0, 120), grams: Number(c.grams) }))
-    .filter((c) => c.name && Number.isFinite(c.grams) && c.grams > 0 && c.grams < 5000);
-  return { phrasings: phrasings.slice(0, 3), components: components.slice(0, 6) };
-}
-
-/**
- * The AI's components were worked out for one amount (and are cached for everyone), so scale them
- * to the amount logged now. Without an amount they stay as the AI's typical serve.
- */
-export function componentsForGrams(components: ResolveResult['components'], grams: number | null): ResolveResult['components'] {
-  const sum = components.reduce((s, c) => s + c.grams, 0);
-  const factor = grams && grams > 0 && sum > 0 ? grams / sum : 1;
-  return components.map((c) => ({ name: c.name, grams: Math.max(1, Math.round(c.grams * factor)) }));
-}
 
 const LIMITS: Record<NutrientKey, number> = {
   energy_kj: 3900, // pure fat is about 3,700 kJ per 100 g

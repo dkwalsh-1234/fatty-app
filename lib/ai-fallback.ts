@@ -1,9 +1,8 @@
-// The browser side of the AI fallbacks: "Ask AI to find this" (item 4) and "Use an AI estimate"
-// (Q5). Both run only when the person taps them, never on type-ahead, and need their AI key.
+// The browser side of Search's AI: "Let AI pick" (the same AI matching as Type) and "Use an AI
+// estimate" (Q5). Both run only when the person asks, never on type-ahead, and need their AI key.
 
 import { NO_KEY_MESSAGE } from './ai/errors';
-import type { Candidate } from './drafts';
-import type { ResolveResponse } from './resolution';
+import type { Candidate, Draft } from './drafts';
 
 export class AiCallError extends Error {
   constructor(
@@ -27,6 +26,14 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return b as T;
 }
 
-export const askAiToFind = (phrase: string, grams: number | null) => post<ResolveResponse>('/api/resolve-food', { phrase, grams });
+/** The AI picks foods and amounts for what was typed; returns the meal confirm address to go to. */
+export async function aiPick(text: string, date?: string): Promise<string> {
+  const { draft } = await post<{ draft: Draft }>('/api/parse-text', { text });
+  const key = Date.now().toString(36);
+  sessionStorage.setItem(`fatty:draft:text:${key}`, JSON.stringify(draft));
+  const q = new URLSearchParams({ text: key });
+  if (date) q.set('d', date);
+  return `/log/confirm?${q}`;
+}
 
 export const aiEstimate = (phrase: string) => post<{ candidate: Candidate }>('/api/estimate-food', { phrase }).then((b) => b.candidate);

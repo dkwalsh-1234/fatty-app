@@ -13,7 +13,7 @@ import { KEY_SCREEN_COPY } from '@/lib/ai/config';
 import { localDate } from '@/lib/dates';
 import { devFixtures, devProfile } from './fixtures';
 
-/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | sheet-coffee | sheet-clif | sheet-egg | goal | settings | aikey | confirm (&text=dev-unmatched, dev-mixed or dev-split); &key=1 gives the sample account a saved AI key */
+/** ?screen=today (add &d=YYYY-MM-DD for another day) | sheet | sheet-ml | sheet-meal | sheet-coffee | sheet-clif | sheet-egg | goal | settings | aikey | confirm (&text=dev-ai, dev-unmatched, dev-mixed or dev-split); &key=1 gives the sample account a saved AI key */
 type ScreenName = 'today' | 'sheet' | 'sheet-ml' | 'sheet-meal' | 'sheet-coffee' | 'sheet-clif' | 'sheet-egg' | 'goal' | 'settings' | 'aikey' | 'confirm';
 
 export function DevPreview() {
@@ -75,6 +75,23 @@ if (typeof window !== 'undefined') {
         { ...item('s1', 'Coffee, espresso', 28, [espresso]), splitFrom: 'Flat white (oat milk)' },
         { ...item('s2', 'Oat beverage', 199, []), splitFrom: 'Flat white (oat milk)' },
         item('s3', 'Chai latte', 250, [chai]),
+      ],
+    }),
+  );
+  // What the AI picks for "Two poached eggs and one piece of sourdough toast, and a mystery muffin".
+  const egg = { ...flatWhite, id: 'egg', name: 'Egg, chicken, whole, poached, no added fat', is_liquid: false, density_g_per_ml: 1.07, energy_kj: 555, protein_g: 12.6, fat_g: 9.4, sat_fat_g: 3, carbs_g: 0.3, sugars_g: 0.3, fibre_g: 0, sodium_mg: 140 };
+  const benedict = { ...egg, id: 'ben', name: 'Eggs benedict, poached chicken egg, bacon or ham & hollandaise sauce, with bread or English muffin', energy_kj: 1015 };
+  const sourdough = { ...egg, id: 'sd', name: 'Bread, sour dough, commercial, toasted', density_g_per_ml: null, energy_kj: 1144, protein_g: 10.4, fat_g: 1.6, sat_fat_g: 0.3, carbs_g: 50.9, sugars_g: 2.6, fibre_g: 3.4, sodium_mg: 520 };
+  const muffin = { ...sourdough, id: 'muf', name: 'Muffin, cake-style, blueberry', energy_kj: 1460 };
+  sessionStorage.setItem(
+    'fatty:draft:text:dev-ai',
+    JSON.stringify({
+      kind: 'text',
+      text: 'Two poached eggs and one piece of sourdough toast, and a mystery muffin',
+      items: [
+        { ...item('a1', 'Poached eggs', 98, [egg, benedict]), estimate: false, confidence: 'high', entered: { amount: 2, unit: 'measure', measure: 'egg' } },
+        { ...item('a2', 'Sourdough toast', 46, [sourdough]), estimate: false, confidence: 'high', entered: { amount: 1, unit: 'measure', measure: 'sourdough, slice' } },
+        { ...item('a3', 'Mystery muffin', 110, [muffin]), noMatch: true },
       ],
     }),
   );

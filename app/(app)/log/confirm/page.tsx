@@ -3,8 +3,8 @@
 // Meal confirm (design 05): one row per item with the matched food (swap for another candidate
 // or search), grams (tap for the amount sheet) and remove. Suggested hidden fats start unticked.
 // Save logs every row as its own entry, linked to the photo. Nothing is saved without this screen.
-// Items search couldn't match have already been through the AI fallback (lib/ai/resolve.ts); a
-// mixed drink or dish may arrive split into parts. An unmatched item can take an AI estimate (Q5).
+// The AI picked each row's food and amount from what search found (lib/ai/match.ts); a home-made
+// dish may arrive split into parts. An item it found no food for can take an AI estimate (Q5).
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -99,7 +99,7 @@ function Confirm() {
           label: i.label,
           query: i.query,
           candidates: i.candidates,
-          food: i.candidates[0] ? fromCandidate(i.candidates[0]) : null,
+          food: !i.noMatch && i.candidates[0] ? fromCandidate(i.candidates[0]) : null,
           grams: i.grams,
           estimate: i.estimate,
           confidence: i.confidence,
@@ -107,7 +107,7 @@ function Confirm() {
           on: !i.suggested,
           note: i.note,
           splitFrom: i.splitFrom ?? null,
-          entered: null,
+          entered: i.entered ?? null,
         })),
       );
     })().catch((e: Error) => setError(e.message));
@@ -254,10 +254,11 @@ function Confirm() {
                     const sub = [
                       r.food!.source === 'ai' ? 'AI estimate' : null,
                       r.splitFrom ? `split by AI from “${r.splitFrom}”` : r.food!.name.toLowerCase() !== r.label.toLowerCase() ? `for “${r.label}”` : null,
+                      longMeasure(r),
                       r.note,
                       r.confidence === 'low' ? 'low confidence' : null,
                     ].filter(Boolean);
-                    return sub.length ? <span className="block truncate text-[12px] text-ink2">{sub.join(' · ')}</span> : null;
+                    return sub.length ? <span className="line-clamp-2 block text-[12px] leading-snug text-ink2">{sub.join(' · ')}</span> : null;
                   })()}
                 </span>
                 <button
@@ -266,7 +267,7 @@ function Confirm() {
                   aria-label={`${r.food!.name}, ${r.grams ? `${int(r.grams)} g` : 'no amount'}. Change amount`}
                   className="press h-[34px] shrink-0 rounded-[17px] border-0 bg-raised px-3.5 text-[15px] font-medium tnum"
                 >
-                  {r.grams ? (r.entered ? amountText(r.entered.amount, r.entered.unit, r.entered.measure) : `${r.estimate ? '≈ ' : ''}${int(r.grams)} g`) : 'Add amount'}
+                  {r.grams ? (r.entered && !longMeasure(r) ? amountText(r.entered.amount, r.entered.unit, r.entered.measure) : `${r.estimate ? '≈ ' : ''}${int(r.grams)} g`) : 'Add amount'}
                 </button>
                 <button type="button" onClick={() => setSwapping(r)} aria-label={`Swap ${r.food!.name}`} className="flex h-11 w-10 items-center justify-center border-0 bg-transparent p-0 text-accent">
                   <Icon name="swap" size={20} stroke={1.9} />
@@ -419,6 +420,13 @@ function Confirm() {
   );
 }
 
+/** A measure too long for the amount button ("1 sourdough, slice"): said under the food, grams on the button. */
+function longMeasure(r: Row): string | null {
+  if (!r.entered || !r.grams) return null;
+  const text = amountText(r.entered.amount, r.entered.unit, r.entered.measure);
+  return text.length > 12 ? text : null;
+}
+
 function RemoveToggle({ row, onToggle }: { row: Row; onToggle: () => void }) {
   const name = row.food?.name ?? row.label;
   return (
@@ -448,8 +456,8 @@ function SwapSheet({ row, estimateWith, onClose, onPick }: {
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState<{ message: string; settings: boolean } | null>(null);
   const phrase = q.trim() || row?.label || '';
-  // Offered once search has nothing better than close spellings.
-  const offerEstimate = !!estimateWith && phrase.length >= 2 && !busy && (results.length === 0 || results[0].tier === 3);
+  // Offered for an item nothing matched (the AI found no food that is it), once search has settled.
+  const offerEstimate = !!estimateWith && phrase.length >= 2 && !busy;
 
   async function estimate() {
     setEstimating(true);

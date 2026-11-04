@@ -1,8 +1,9 @@
 'use client';
 
-// Typed or dictated text: "45 g salad, 2 eggs, flat white, 30 g almonds". Works with Gboard voice
-// typing as it is. Parsed locally when every item has an amount and an obvious match; otherwise
-// the person's own AI key splits it. Either way it lands on the meal confirm screen.
+// Typed or dictated text, written however you like: "two poached eggs on sourdough and a flat
+// white". Works with Gboard voice typing as it is. The person's own AI lists the foods and picks
+// each one's food and amount from the database (without a key, a plain list with an amount for
+// every item is matched by search alone). Either way it lands on the meal confirm screen.
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -11,7 +12,6 @@ import { useApp } from '@/components/app/AppProvider';
 import { BackButton, Card, Dock, DockButton, Notice, Screen } from '@/components/ui';
 import { NO_KEY_MESSAGE } from '@/lib/ai/errors';
 import type { Draft } from '@/lib/drafts';
-import { allHaveAmounts, parseText } from '@/lib/parse';
 
 export default function TypePage() {
   return (
@@ -30,7 +30,6 @@ function TypeMeal() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; settings?: boolean } | null>(null);
   const noKey = app.loaded && !app.aiKey;
-  const local = allHaveAmounts(parseText(text));
 
   async function go() {
     if (!text.trim()) return;
@@ -75,13 +74,12 @@ function TypeMeal() {
             }
           }}
           enterKeyHint="go"
-          placeholder="45 g salad, 2 eggs, flat white, 30 g almonds"
+          placeholder="Two poached eggs on sourdough and a flat white"
           className="block w-full resize-none rounded-card border-0 bg-surface px-5 py-4 text-[18px] leading-snug shadow-[var(--cc-card-shadow)] outline-none focus:shadow-[0_0_0_2.5px_var(--cc-focus),0_0_0_8px_var(--cc-focus-glow)]"
         />
       </label>
       <p className="mx-1 mt-2 text-[13px] leading-snug text-ink2">
-        Separate items with commas. Tap the microphone on your keyboard to say it instead.
-        {local && ' Every item has an amount, so this may not need AI at all.'}
+        Write it however you&apos;d say it; the AI works out the foods and amounts for you to check. Tap the microphone on your keyboard to say it instead.
       </p>
 
       {noKey && (

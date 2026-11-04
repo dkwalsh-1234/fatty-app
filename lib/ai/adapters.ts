@@ -19,6 +19,8 @@ export interface AiRequest {
   prompt: string;
   images: AiImage[];
   schema: z.ZodType;
+  /** A plain extraction that needs no reasoning: answer straight away, without thinking first. */
+  quick?: boolean;
 }
 
 export interface AiAdapter {
@@ -86,6 +88,7 @@ const anthropic: AiAdapter = {
         model,
         max_tokens: AI_CALL.maxOutputTokens * 2,
         system: req.system,
+        ...(req.quick ? { thinking: { type: "disabled" as const } } : {}),
         output_config: { effort: "low", format: { type: "json_schema", schema: jsonSchema(req.schema) } },
         messages: [
           {
