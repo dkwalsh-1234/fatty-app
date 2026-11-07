@@ -9,7 +9,7 @@ import { fromText } from "@/lib/matching";
 import { admin } from "@/lib/supabase/admin";
 
 /** Bump when the prompts or matching change, so old answers are worked out again. */
-const VERSION = 2;
+const VERSION = 3;
 
 // Typed or dictated text (from Type, or Search's "Let AI pick") → the person's own AI lists the
 // foods with amounts and database searches → the app runs them → the AI picks the matching food

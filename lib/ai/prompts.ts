@@ -34,6 +34,7 @@ Rules:
 - Name each item in plain generic terms that would match an Australian food database (for example "rice, white, cooked", "chicken breast, cooked", "broccoli, boiled"), plus a short display name ("White rice").
 - One item for a dish or drink and what it's made or served with, when a food database might list them together: "chicken stir fry with rice", "flat white with oat milk", "spaghetti bolognese", "a ham and cheese sandwich", "tea with milk". Always one item when a single amount covers the lot. Separate foods eaten together are separate items: "eggs and toast", "a coffee and a banana".
 - Split only a home-made combination a database is unlikely to list as one food into its main parts, with part_of set to the dish's name on each part; otherwise part_of is null.
+- Read it as an Australian would, and use where they ate. "Chips" with a size, with a meal, or from a takeaway, pub or restaurant are hot chips (fries), whatever the cuisine: "medium chips", "fish and chips", "chips at Guzman y Gomez". A packet of chips is potato crisps. Corn chips are only what they call corn chips, or nachos. Hot chips in the database are "potato chips takeaway deep fried".
 - description: exactly what it is, with how it was cooked and anything said about it ("chicken eggs, poached, no added fat").
 - searches: two to four searches for the database, most likely first. Each is two to four key words in the database's own terms and order, like "egg chicken poached", "bread sour dough toasted", "milk cow regular fat" (the database says "regular fat", not "full cream"), "coffee flat white cereal based milk" (oat and rice milks are "cereal based"), "stir fry chicken rice". Every word of a search must match, so keep them short. Where a brand or product was named, one search is that brand and product ("carmans toasted muesli").
 - Give each item a confidence: low, medium or high.
@@ -56,11 +57,12 @@ Rules:
 - One item per food. "text" is the food words only. display_name is a short name as they'd say it ("Poached eggs").
 - One item for a dish or drink and what it's made or served with, when a food database might list them together: "chicken stir fry with rice", "flat white with oat milk", "spaghetti bolognese", "a ham and cheese sandwich", "tea with milk". Always one item when a single amount covers the lot. Separate foods eaten together are separate items: "eggs and toast", "a coffee and a banana".
 - Split only a home-made combination a database is unlikely to list as one food into its main parts, with part_of set to the dish's name on each part; otherwise part_of is null.
+- Read it as an Australian would, and use where they ate. "Chips" with a size, with a meal, or from a takeaway, pub or restaurant are hot chips (fries), whatever the cuisine: "medium chips", "fish and chips", "chips at Guzman y Gomez". A packet of chips is potato crisps. Corn chips are only what they call corn chips, or nachos. Hot chips in the database are "potato chips takeaway deep fried".
 - description: exactly what it is, with how it was cooked and anything said about it ("chicken eggs, poached, no added fat").
 - searches: two to four searches for the database, most likely first. Each is two to four key words in the database's own terms and order, like "egg chicken poached", "bread sour dough toasted", "milk cow regular fat" (the database says "regular fat", not "full cream"), "coffee flat white cereal based milk" (oat and rice milks are "cereal based"), "stir fry chicken rice". Every word of a search must match, so keep them short. Where a brand or product was named, one search is that brand and product ("carmans toasted muesli").
 - If grams or millilitres are given, return them in amount and unit (convert kg to g and litres to ml).
 - If a count is given instead ("2 eggs", "a banana", "one piece of toast"), return count and count_noun ("egg", "banana", "slice") and leave amount null.
-- Only when neither an amount nor a count is given, return typical_grams: a typical single serve in grams. Otherwise typical_grams is null.
+- Only when neither an amount nor a count is given, return typical_grams: a typical single serve in grams, for the size and place they described ("medium chips" from a fast food chain is about 150 g). A size word like "medium" is not a count. Otherwise typical_grams is null.
 - Return no calories, kilojoules or nutrients of any kind.`;
 }
 
@@ -83,7 +85,7 @@ Rules:
 - alternatives: up to three other listed foods that could also be right, best first.
 - An item with grams or millilitres keeps them: measure, count and grams are null.
 - An item with a count: the chosen food's measure that fits what was counted ("a piece of toast" is a slice) and the count. If no measure fits, grams is your estimate for that many.
-- An item with no amount: one natural serve. A measure and count where one fits (1 egg, 1 slice, 1 regular cup), else grams of a typical serve.
+- An item with no amount: one natural serve. A measure and count where one truly fits what they had (1 egg, 1 slice, 1 regular cup), else grams, using the item's typical serve where it has one. A packet or pack is never a restaurant serve.
 - A photo item keeps the grams estimated from the photo: measure, count and grams are null.
 - measure is the name of one of the chosen food's measures, copied exactly, without its weight: "egg", not "egg = 49 g".
 - When they didn't say which kind, choose the most common, plainest version: white over rye or wholemeal, regular over reduced fat, a commercial loaf over a home-made one.

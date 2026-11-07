@@ -348,7 +348,7 @@ export function AmountSheet({ request, onClose }: { request: AmountRequest; onCl
       inputRef.current?.focus();
       return;
     }
-    if (app.fixtures) {
+    if (app.fixtures && request.kind !== 'pick') {
       // The /dev preview has no database: show that Save worked and close.
       onClose();
       return;

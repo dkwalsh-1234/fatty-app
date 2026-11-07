@@ -1,7 +1,8 @@
 'use client';
 
 // Meal confirm (design 05): one row per item with the matched food (swap for another candidate
-// or search), grams (tap for the amount sheet) and remove. Suggested hidden fats start unticked.
+// or search), grams (tap for the amount sheet) and remove, plus "Add a food" for anything missing.
+// Suggested hidden fats start unticked.
 // Save logs every row as its own entry, linked to the photo. Nothing is saved without this screen.
 // The AI picked each row's food and amount from what search found (lib/ai/match.ts); a home-made
 // dish may arrive split into parts. An item it found no food for can take an AI estimate (Q5).
@@ -15,15 +16,15 @@ import { signedPhotoUrl } from '@/lib/camera';
 import { MEAL_PHOTO_BUCKET } from '@/lib/config';
 import { DEFAULT_MEAL_BOUNDARIES, localTime, MEAL_LABEL, mealForTime, zonedToUtc, type Meal } from '@/lib/dates';
 import { PROVIDER_BY_ID } from '@/lib/ai/config';
-import { aiEstimate, AiCallError } from '@/lib/ai-fallback';
+import { aiDraft, aiEstimate, AiCallError } from '@/lib/ai-fallback';
 import { getFood, saveMeal, type SearchResult } from '@/lib/data';
 import { useFoodSearch } from '@/lib/useFoodSearch';
-import type { Candidate, Draft } from '@/lib/drafts';
+import { newKey, type Candidate, type Draft, type DraftItem } from '@/lib/drafts';
 import { amountText, energyText, grams as fmtGrams, int, saltText } from '@/lib/format';
 import { saveEntries } from '@/lib/logging';
 import { sumEntries, toPer100, type Per100 } from '@/lib/nutrients';
 import { supabase } from '@/lib/supabase/browser';
-import { SOURCE_TAG, type Food } from '@/lib/types';
+import { SOURCE_TAG } from '@/lib/types';
 
 export default function ConfirmPage() {
   return (
@@ -60,6 +61,22 @@ const fromCandidate = (c: Candidate): NonNullable<Row['food']> => ({
   is_liquid: c.is_liquid,
 });
 
+const rowFrom = (i: DraftItem): Row => ({
+  key: i.key,
+  label: i.label,
+  query: i.query,
+  candidates: i.candidates,
+  food: !i.noMatch && i.candidates[0] ? fromCandidate(i.candidates[0]) : null,
+  grams: i.grams,
+  estimate: i.estimate,
+  confidence: i.confidence,
+  suggested: i.suggested,
+  on: !i.suggested,
+  note: i.note,
+  splitFrom: i.splitFrom ?? null,
+  entered: i.entered ?? null,
+});
+
 function Confirm() {
   const app = useApp();
   const router = useRouter();
@@ -75,6 +92,7 @@ function Confirm() {
   const [when, setWhen] = useState(() => ({ date, time: localTime(tz), meal: mealForTime(localTime(tz), app.profile.meal_boundaries ?? DEFAULT_MEAL_BOUNDARIES) as Meal }));
   const [editingWhen, setEditingWhen] = useState(false);
   const [swapping, setSwapping] = useState<Row | null>(null);
+  const [adding, setAdding] = useState(false);
   const [naming, setNaming] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -93,23 +111,7 @@ function Confirm() {
       }
       if (!d) throw new Error('This meal has expired. Start again from Photo or Type.');
       setDraft(d);
-      setRows(
-        d.items.map((i) => ({
-          key: i.key,
-          label: i.label,
-          query: i.query,
-          candidates: i.candidates,
-          food: !i.noMatch && i.candidates[0] ? fromCandidate(i.candidates[0]) : null,
-          grams: i.grams,
-          estimate: i.estimate,
-          confidence: i.confidence,
-          suggested: i.suggested,
-          on: !i.suggested,
-          note: i.note,
-          splitFrom: i.splitFrom ?? null,
-          entered: i.entered ?? null,
-        })),
-      );
+      setRows(d.items.map(rowFrom));
     })().catch((e: Error) => setError(e.message));
   }, [photoId, textKey]);
 
@@ -128,23 +130,71 @@ function Confirm() {
 
   const update = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
-  async function editGrams(r: Row) {
+  const preview = (f: NonNullable<Row['food']>) => ({ name: f.name, source: f.source as keyof typeof SOURCE_TAG, is_liquid: f.is_liquid });
+
+  function editGrams(r: Row) {
     if (!r.food) return setSwapping(r);
-    let food: Food;
-    try {
-      food = await getFood(r.food.id);
-    } catch (e) {
-      return setError(e instanceof Error ? e.message : "Couldn't load that food.");
-    }
     app.openAmount({
       kind: 'pick',
-      foodId: food.id,
-      food,
+      foodId: r.food.id,
+      preview: preview(r.food),
       initialGrams: r.grams,
       saveLabel: 'Done',
       onPick: ({ grams, amount, unit, measure, estimate }) =>
         update(r.key, { grams, estimate, note: null, on: true, entered: unit === 'g' ? null : { amount, unit, measure } }),
     });
+  }
+
+  const closeSheet = () => {
+    setSwapping(null);
+    setAdding(false);
+  };
+
+  /** A food chosen in the sheet. A new row asks its amount; so does a swap, as 60 g of corn chips isn't 60 g of hot chips. */
+  function chooseFood(food: NonNullable<Row['food']>) {
+    const row = swapping;
+    closeSheet();
+    if (row) {
+      if (row.food?.id === food.id) return update(row.key, { on: true });
+      const swapped = { food, on: true, note: null, entered: null };
+      update(row.key, swapped);
+      if (row.food) editGrams({ ...row, ...swapped });
+      return;
+    }
+    app.openAmount({
+      kind: 'pick',
+      foodId: food.id,
+      preview: preview(food),
+      saveLabel: 'Add',
+      onPick: ({ grams, amount, unit, measure, estimate }) =>
+        setRows((rs) => [
+          ...rs,
+          {
+            key: newKey(),
+            label: food.name,
+            query: food.name,
+            candidates: [],
+            food,
+            grams,
+            estimate,
+            confidence: null,
+            suggested: false,
+            on: true,
+            note: null,
+            splitFrom: null,
+            entered: unit === 'g' ? null : { amount, unit, measure },
+          },
+        ]),
+    });
+  }
+
+  /** "Let AI pick" in the sheet: its foods replace the row being swapped, or join the meal. */
+  function chooseAiItems(items: DraftItem[]) {
+    // A repeat of the same words comes back with the same keys.
+    const fresh = items.map((i) => rowFrom({ ...i, key: newKey() }));
+    const row = swapping;
+    setRows((rs) => (row ? rs.flatMap((r) => (r.key === row.key ? fresh : [r])) : [...rs, ...fresh]));
+    closeSheet();
   }
 
   async function save() {
@@ -246,8 +296,8 @@ function Confirm() {
               <span className="text-[13px] text-ink2">{found.filter((r) => r.on).length} {found.filter((r) => r.on).length === 1 ? 'item' : 'items'}</span>
             </div>
             {found.map((r) => (
-              <div key={r.key} className={cx('flex min-h-14 items-center gap-1.5 border-t border-separator py-1', !r.on && 'opacity-50')}>
-                <span className="min-w-0 flex-1">
+              <div key={r.key} className="flex min-h-14 items-center gap-1.5 border-t border-separator py-1">
+                <span className={cx('min-w-0 flex-1', !r.on && 'opacity-50')}>
                   <span className={cx('line-clamp-2 block text-[15px] font-medium leading-snug', !r.on && 'line-through')}>{r.food!.name}</span>
                   {(() => {
                     if (r.on && !r.grams) return <span className="block truncate text-[12px] text-warn-text">Add an amount, or remove this item</span>;
@@ -265,7 +315,7 @@ function Confirm() {
                   type="button"
                   onClick={() => editGrams(r)}
                   aria-label={`${r.food!.name}, ${r.grams ? `${int(r.grams)} g` : 'no amount'}. Change amount`}
-                  className="press h-[34px] shrink-0 rounded-[17px] border-0 bg-raised px-3.5 text-[15px] font-medium tnum"
+                  className={cx('press h-[34px] shrink-0 rounded-[17px] border-0 bg-raised px-3.5 text-[15px] font-medium tnum', !r.on && 'opacity-50')}
                 >
                   {r.grams ? (r.entered && !longMeasure(r) ? amountText(r.entered.amount, r.entered.unit, r.entered.measure) : `${r.estimate ? '≈ ' : ''}${int(r.grams)} g`) : 'Add amount'}
                 </button>
@@ -313,6 +363,11 @@ function Confirm() {
           </section>
         )}
 
+        <button type="button" onClick={() => setAdding(true)} className="press flex min-h-11 items-center gap-2 self-center border-0 bg-transparent px-3 text-[16px] font-semibold text-accent">
+          <Icon name="add" size={20} />
+          Add a food
+        </button>
+
         {suggestions.map((r) => (
           <label key={r.key} className="flex min-h-[62px] items-center gap-3 rounded-card border-[1.5px] border-dashed border-ink3 px-5 py-2">
             <input
@@ -334,8 +389,7 @@ function Confirm() {
               type="button"
               onClick={(e) => {
                 e.preventDefault();
-                if (r.food) void editGrams(r);
-                else setSwapping(r);
+                editGrams(r);
               }}
               className="border-0 bg-transparent text-[14px] font-semibold text-accent"
             >
@@ -404,17 +458,14 @@ function Confirm() {
         </DockButton>
       </Dock>
 
-      <SwapSheet
-        key={swapping?.key ?? 'none'}
+      <FoodSheet
+        key={swapping?.key ?? (adding ? 'add' : 'none')}
         row={swapping}
-        // The last resort, for an item nothing matched, and only with an AI key.
-        estimateWith={swapping && !swapping.food && app.aiKey ? PROVIDER_BY_ID[app.aiKey.provider].name : null}
-        onClose={() => setSwapping(null)}
-        onPick={(food) => {
-          if (!swapping) return;
-          update(swapping.key, { food, on: true });
-          setSwapping(null);
-        }}
+        adding={adding}
+        aiName={app.aiKey ? PROVIDER_BY_ID[app.aiKey.provider].name : null}
+        onClose={closeSheet}
+        onPick={chooseFood}
+        onAiItems={chooseAiItems}
       />
     </Screen>
   );
@@ -441,35 +492,43 @@ function RemoveToggle({ row, onToggle }: { row: Row; onToggle: () => void }) {
   );
 }
 
-function SwapSheet({ row, estimateWith, onClose, onPick }: {
+/** Which food a row is (swap), or a food to add to the meal: candidates, search, and the AI. */
+function FoodSheet({ row, adding, aiName, onClose, onPick, onAiItems }: {
   row: Row | null;
-  /** Provider name when "Use an AI estimate" is offered. */
-  estimateWith: string | null;
+  adding: boolean;
+  /** Provider name when the AI is on offer: there's a saved key. */
+  aiName: string | null;
   onClose: () => void;
   onPick: (f: NonNullable<Row['food']>) => void;
+  onAiItems: (items: DraftItem[]) => void;
 }) {
+  const open = !!row || adding;
   // Keyed by row, so the search box starts with that item's name.
   const [q, setQ] = useState(row?.query ?? '');
-  const search = useFoodSearch(q, 12, !!row);
+  const search = useFoodSearch(q, 12, open);
   const results = search.results ?? [];
   const busy = search.searching;
-  const [estimating, setEstimating] = useState(false);
-  const [estimateError, setEstimateError] = useState<{ message: string; settings: boolean } | null>(null);
+  const [aiBusy, setAiBusy] = useState<'pick' | 'estimate' | null>(null);
+  const [aiError, setAiError] = useState<{ message: string; settings: boolean } | null>(null);
   const phrase = q.trim() || row?.label || '';
-  // Offered for an item nothing matched (the AI found no food that is it), once search has settled.
-  const offerEstimate = !!estimateWith && phrase.length >= 2 && !busy;
+  const canPick = !!aiName && q.trim().length >= 3;
+  // The last resort: for an item nothing matched, or a food being added that search can't find.
+  const offerEstimate = !!aiName && !row?.food && phrase.length >= 2 && !busy && (!!row || results.length === 0 || results[0].tier === 3);
 
-  async function estimate() {
-    setEstimating(true);
-    setEstimateError(null);
+  async function ask<T>(kind: 'pick' | 'estimate', call: () => Promise<T>, done: (r: T) => void) {
+    if (aiBusy) return;
+    setAiBusy(kind);
+    setAiError(null);
     try {
-      onPick(fromCandidate(await aiEstimate(phrase)));
+      done(await call());
     } catch (e) {
-      setEstimateError({ message: e instanceof Error ? e.message : "That didn't work.", settings: e instanceof AiCallError && e.settings });
+      setAiError({ message: e instanceof Error ? e.message : "That didn't work.", settings: e instanceof AiCallError && e.settings });
     } finally {
-      setEstimating(false);
+      setAiBusy(null);
     }
   }
+  const letAiPick = () => ask('pick', () => aiDraft(q.trim()), (d) => onAiItems(d.items));
+  const estimate = () => ask('estimate', () => aiEstimate(phrase), (c) => onPick(fromCandidate(c)));
 
   async function pickResult(r: SearchResult) {
     const f = await getFood(r.id);
@@ -477,9 +536,9 @@ function SwapSheet({ row, estimateWith, onClose, onPick }: {
   }
 
   return (
-    <Sheet open={!!row} onClose={onClose} label="Swap food">
+    <Sheet open={open} onClose={onClose} label={adding ? 'Add a food' : 'Swap food'}>
       <div className="flex flex-col gap-3 pb-2">
-        <h2 className="pt-1 text-center text-[17px] font-semibold">Which food is it?</h2>
+        <h2 className="pt-1 text-center text-[17px] font-semibold">{adding ? 'Add a food' : 'Which food is it?'}</h2>
         {row && row.candidates.length > 0 && (
           <div className="rounded-card bg-raised px-4 py-1">
             {row.candidates.map((c) => (
@@ -495,10 +554,28 @@ function SwapSheet({ row, estimateWith, onClose, onPick }: {
         )}
         <label className="flex h-12 items-center gap-2.5 rounded-[24px] bg-raised px-4">
           <Icon name="search" size={18} className="text-ink2" />
-          <span className="sr-only">Search for another food</span>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search for another" className="h-full min-w-0 flex-1 border-0 bg-transparent text-[16px] outline-none" />
+          <span className="sr-only">{adding ? 'What did you have?' : 'Search for another food'}</span>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && canPick && void letAiPick()}
+            autoFocus={adding}
+            enterKeyHint="search"
+            placeholder={adding ? 'What did you have?' : 'Search for another'}
+            className="h-full min-w-0 flex-1 border-0 bg-transparent text-[16px] outline-none"
+          />
           {busy && <Spinner />}
         </label>
+        {canPick && (
+          <button type="button" onClick={letAiPick} disabled={!!aiBusy} className="press flex min-h-[52px] items-center gap-3 rounded-card border-0 bg-raised px-4 py-1.5 text-left">
+            <Icon name="sparkle" size={20} className="shrink-0 text-accent" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[16px] font-semibold text-accent">{aiBusy === 'pick' ? `${aiName} is picking…` : 'Let AI pick'}</span>
+              <span className="block truncate text-[12px] text-ink2">{aiName} finds the right food and amount for “{q.trim()}”</span>
+            </span>
+            {aiBusy === 'pick' && <Spinner label="Picking" />}
+          </button>
+        )}
         {results.length > 0 && (
           <div className="max-h-[40dvh] overflow-y-auto rounded-card bg-raised px-4 py-1">
             {results.map((r) => (
@@ -511,20 +588,20 @@ function SwapSheet({ row, estimateWith, onClose, onPick }: {
         )}
         {offerEstimate && (
           <div className="rounded-card bg-raised px-4 py-2">
-            <button type="button" onClick={estimate} disabled={estimating} className="flex min-h-11 w-full items-center gap-2 border-0 bg-transparent p-0 text-left text-[16px] font-semibold text-accent">
-              {estimating ? 'Estimating…' : 'Use an AI estimate'}
-              {estimating && <Spinner label="Estimating" />}
+            <button type="button" onClick={estimate} disabled={!!aiBusy} className="flex min-h-11 w-full items-center gap-2 border-0 bg-transparent p-0 text-left text-[16px] font-semibold text-accent">
+              {aiBusy === 'estimate' ? 'Estimating…' : 'Use an AI estimate'}
+              {aiBusy === 'estimate' && <Spinner label="Estimating" />}
             </button>
             <p className="pb-1 text-[12px] leading-snug text-ink2">
-              {estimateWith} estimates the values for “{phrase}”. They&apos;re marked AI estimate wherever they&apos;re counted.
+              {aiName} estimates the values for “{phrase}”. They&apos;re marked AI estimate wherever they&apos;re counted.
             </p>
           </div>
         )}
         <Notice tone="warn">
-          {estimateError && (
+          {aiError && (
             <>
-              {estimateError.message}
-              {estimateError.settings && (
+              {aiError.message}
+              {aiError.settings && (
                 <>
                   {' '}
                   <a href="/settings#ai" className="font-semibold text-accent">
