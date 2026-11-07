@@ -1,5 +1,6 @@
-// The browser side of Search's AI: "Let AI pick" (the same AI matching as Type) and "Use an AI
-// estimate" (Q5). Both run only when the person asks, never on type-ahead, and need their AI key.
+// The browser side of "Let AI pick" (Search and meal confirm, the same AI matching as Type) and
+// "Use an AI estimate" (Q5). Both run only when the person asks, never on type-ahead, and need
+// their AI key.
 
 import { NO_KEY_MESSAGE } from './ai/errors';
 import type { Candidate, Draft } from './drafts';
@@ -26,9 +27,12 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return b as T;
 }
 
-/** The AI picks foods and amounts for what was typed; returns the meal confirm address to go to. */
+/** The AI's foods and amounts for what was typed. */
+export const aiDraft = (text: string) => post<{ draft: Draft }>('/api/parse-text', { text }).then((b) => b.draft);
+
+/** The same, left where meal confirm looks; returns the address to go to. */
 export async function aiPick(text: string, date?: string): Promise<string> {
-  const { draft } = await post<{ draft: Draft }>('/api/parse-text', { text });
+  const draft = await aiDraft(text);
   const key = Date.now().toString(36);
   sessionStorage.setItem(`fatty:draft:text:${key}`, JSON.stringify(draft));
   const q = new URLSearchParams({ text: key });

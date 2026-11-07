@@ -117,6 +117,7 @@ function amountLine(u: Understood): string {
   if (u.amount && u.fromPhoto) return `about ${int(u.amount)} g, estimated from the photo`;
   if (u.amount) return `${int(u.amount)} ${u.unit ?? 'g'}`;
   if (u.count) return `${u.count} × ${u.count_noun ?? 'one'}`;
+  if (u.typical_grams) return `not given; a typical serve is about ${int(u.typical_grams)} g`;
   return 'not given';
 }
 

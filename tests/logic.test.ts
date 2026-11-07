@@ -747,6 +747,11 @@ describe('AI-first matching', () => {
     expect(text).toContain('measures: serve = 249 g');
   });
 
+  it('tells the AI the typical serve when no amount was given', () => {
+    const chips = fromText({ text: 'medium chips', display_name: 'Medium chips', description: 'hot chips, medium serve', searches: ['potato chips takeaway deep fried'], part_of: null, amount: null, unit: null, count: null, count_noun: null, typical_grams: 150 });
+    expect(describeItems([chips], [[]])).toContain('Amount: not given; a typical serve is about 150 g.');
+  });
+
   it('turns the pick into the chosen food and a count of its measure', () => {
     const row = applyPick(eggs, [benedict, egg], { item: 1, food: 'B', alternatives: ['A'], measure: 'egg', count: 2, grams: null, confidence: 'high' }, 'k');
     expect(row.candidates.map((c) => c.id)).toEqual(['e', 'b']);

@@ -90,7 +90,7 @@ if (typeof window !== 'undefined') {
       text: 'Two poached eggs and one piece of sourdough toast, and a mystery muffin',
       items: [
         { ...item('a1', 'Poached eggs', 98, [egg, benedict]), estimate: false, confidence: 'high', entered: { amount: 2, unit: 'measure', measure: 'egg' } },
-        { ...item('a2', 'Sourdough toast', 46, [sourdough]), estimate: false, confidence: 'high', entered: { amount: 1, unit: 'measure', measure: 'sourdough, slice' } },
+        { ...item('a2', 'Sourdough toast', 46, [sourdough, egg]), estimate: false, confidence: 'high', entered: { amount: 1, unit: 'measure', measure: 'sourdough, slice' } },
         { ...item('a3', 'Mystery muffin', 110, [muffin]), noMatch: true },
       ],
     }),
